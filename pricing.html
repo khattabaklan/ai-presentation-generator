@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing — AI Presentation Generator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="navbar-brand">AI Slides</a>
+      <ul class="navbar-links" id="nav-links"></ul>
+    </div>
+  </nav>
+
+  <div class="container pricing-page">
+    <h1>Simple Pricing</h1>
+    <p class="subtitle">Start free. Upgrade when you need more.</p>
+
+    <div class="pricing-grid">
+      <div class="card pricing-card">
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <p class="price-note">No credit card required</p>
+        <ul class="pricing-features">
+          <li>1 presentation generation</li>
+          <li>PowerPoint (.pptx) download</li>
+          <li>Speaker script (.docx) download</li>
+          <li>All color themes</li>
+          <li>5-20 slides per presentation</li>
+        </ul>
+        <a href="signup.html" class="btn btn-outline" style="width: 100%;">Get Started</a>
+      </div>
+
+      <div class="card pricing-card featured">
+        <div class="badge">Most Popular</div>
+        <h3>Pro</h3>
+        <div class="price">$9.99 <span>/month</span></div>
+        <p class="price-note">Cancel anytime</p>
+        <ul class="pricing-features">
+          <li>Unlimited generations</li>
+          <li>PowerPoint (.pptx) download</li>
+          <li>Speaker script (.docx) download</li>
+          <li>All color themes</li>
+          <li>5-20 slides per presentation</li>
+          <li>Generation history & re-downloads</li>
+          <li>Priority generation speed</li>
+        </ul>
+        <button class="btn btn-primary" style="width: 100%;" id="subscribe-btn">Subscribe to Pro</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">
+      <p>AI Presentation Generator &copy; 2026. Powered by Claude AI.</p>
+    </div>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    document.getElementById('subscribe-btn').addEventListener('click', async () => {
+      if (!auth.isLoggedIn()) {
+        window.location.href = 'signup.html';
+        return;
+      }
+
+      const btn = document.getElementById('subscribe-btn');
+      btn.disabled = true;
+      btn.textContent = 'Redirecting to checkout...';
+
+      try {
+        const { url } = await api.createCheckout();
+        window.location.href = url;
+      } catch (err) {
+        alert(err.message || 'Failed to start checkout. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Subscribe to Pro';
+      }
+    });
+  </script>
+</body>
+</html>

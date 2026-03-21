@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Presentation Generator — Turn Assignments into Presentations</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="navbar-brand">AI Slides</a>
+      <ul class="navbar-links" id="nav-links"></ul>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="container">
+      <h1>Turn Assignments into<br><span>Beautiful Presentations</span></h1>
+      <p>Paste your assignment instructions and get a professional PowerPoint presentation with speaker notes — powered by AI.</p>
+      <div class="hero-actions">
+        <a href="signup.html" class="btn btn-primary btn-lg">Get Started Free</a>
+        <a href="#report" class="btn btn-outline btn-lg">See How It Works</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="container">
+      <div class="features-grid">
+        <div class="card feature-card">
+          <div class="icon">&#x1F4DD;</div>
+          <h3>Paste Your Assignment</h3>
+          <p>Just copy and paste your assignment instructions or topic. The AI handles everything else.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="icon">&#x1F3A8;</div>
+          <h3>AI-Generated Slides</h3>
+          <p>Get a structured, professional PowerPoint with clean layouts, bullet points, and multiple theme options.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="icon">&#x1F399;</div>
+          <h3>Speaker Script Included</h3>
+          <p>Download a Word document with detailed speaker notes for every slide — ready to present.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="report-section" id="report">
+    <div class="container">
+      <h2>The Workflow Behind This Tool</h2>
+      <p class="subtitle">This product was born from a real university workflow — here's the story.</p>
+      <div class="report-content card">
+        <h3>The Problem</h3>
+        <p>University students spend hours creating presentations for every assignment. The process is tedious: read the instructions, research the topic, organize the content into slides, design the layout, and write speaker notes. For a single 10-slide presentation, this can take 3-5 hours.</p>
+
+        <h3>The Original Workflow</h3>
+        <p>Khattab built a personal workflow using Claude AI that automated this entire process:</p>
+        <ol>
+          <li><strong>Input:</strong> Paste the assignment instructions into Claude</li>
+          <li><strong>Content Generation:</strong> Claude analyzes the requirements and generates structured slide content — titles, bullet points, and detailed speaker notes for each slide</li>
+          <li><strong>Slide Creation:</strong> A Node.js script uses pptxgenjs to convert the structured content into a polished PowerPoint file</li>
+          <li><strong>Script Creation:</strong> Another script generates a Word document with the full speaker script, organized by slide</li>
+        </ol>
+
+        <h3>The Result</h3>
+        <p>What used to take 3-5 hours now takes under 30 seconds. The presentations are well-structured, professionally formatted, and include everything needed to present confidently — including detailed speaker notes that read naturally.</p>
+
+        <h3>From Workflow to Product</h3>
+        <p>This tool packages that exact workflow into a simple web interface. Upload your assignment, pick a theme, and download your presentation. One free generation to try it out, then unlimited access with a Pro subscription.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" style="padding-bottom: 80px;">
+    <div class="container text-center">
+      <h2>Ready to try it?</h2>
+      <p class="subtitle" style="margin-bottom: 24px;">Your first presentation is free. No credit card required.</p>
+      <a href="signup.html" class="btn btn-accent btn-lg">Generate Your First Presentation</a>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <p>AI Presentation Generator &copy; 2026. Powered by Claude AI.</p>
+    </div>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/landing.js"></script>
+</body>
+</html>

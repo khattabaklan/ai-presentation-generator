@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generate Presentation — AI Presentation Generator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="navbar-brand">AI Slides</a>
+      <ul class="navbar-links" id="nav-links"></ul>
+    </div>
+  </nav>
+
+  <div class="container generator-page">
+    <h1>Generate a Presentation</h1>
+
+    <div id="error-alert" class="alert alert-error hidden"></div>
+
+    <!-- Form Section -->
+    <div id="form-section">
+      <form id="generator-form" class="generator-form">
+        <div class="form-group">
+          <label for="assignment-text">Assignment Instructions</label>
+          <textarea id="assignment-text" rows="8" placeholder="Paste your assignment instructions, topic description, or requirements here...&#10;&#10;Example: Create a presentation about the impact of artificial intelligence on healthcare. Cover current applications, challenges, ethical considerations, and future directions. Target audience is undergraduate students." required></textarea>
+        </div>
+
+        <div class="options-row">
+          <div class="form-group">
+            <label for="slide-count">Number of Slides</label>
+            <select id="slide-count">
+              <option value="5">5 slides</option>
+              <option value="8">8 slides</option>
+              <option value="10" selected>10 slides</option>
+              <option value="12">12 slides</option>
+              <option value="15">15 slides</option>
+              <option value="20">20 slides</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="color-theme">Color Theme</label>
+            <select id="color-theme">
+              <option value="professional">Professional (Blue)</option>
+              <option value="modern">Modern (Coral)</option>
+              <option value="academic">Academic (Burgundy)</option>
+              <option value="dark">Dark Mode</option>
+              <option value="nature">Nature (Green)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg">Generate Presentation</button>
+      </form>
+    </div>
+
+    <!-- Progress Section -->
+    <div id="progress-section" class="progress-container card">
+      <div class="spinner"></div>
+      <p class="progress-text" id="progress-text">Starting generation...</p>
+      <p class="mt-2" style="color: var(--text-secondary); font-size: 0.9rem;">This usually takes 15-30 seconds.</p>
+    </div>
+
+    <!-- Download Section -->
+    <div id="download-section" class="download-section card">
+      <h2>Your Presentation is Ready!</h2>
+      <p>Download your files below.</p>
+      <div class="download-buttons">
+        <button class="btn btn-primary btn-lg" id="download-pptx">Download PowerPoint (.pptx)</button>
+        <button class="btn btn-outline btn-lg" id="download-docx">Download Speaker Script (.docx)</button>
+      </div>
+      <button class="btn btn-outline mt-4" id="new-generation">Generate Another</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">
+      <p>AI Presentation Generator &copy; 2026. Powered by Claude AI.</p>
+    </div>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/generator.js"></script>
+</body>
+</html>
