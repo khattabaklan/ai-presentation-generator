@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — AI Presentation Generator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="navbar-brand">AI Slides</a>
+      <ul class="navbar-links" id="nav-links"></ul>
+    </div>
+  </nav>
+
+  <div class="container dashboard-page">
+    <div class="dashboard-header">
+      <h1>Dashboard</h1>
+      <span id="user-info" style="color: var(--text-secondary);"></span>
+    </div>
+
+    <div class="stats-row" id="stats-row">
+      <div class="card stat-card">
+        <div class="value">—</div>
+        <div class="label">Loading...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom: 16px;">Generation History</h2>
+
+      <div id="empty-state" class="hidden text-center" style="padding: 40px;">
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">No presentations generated yet.</p>
+        <a href="app.html" class="btn btn-primary">Generate Your First</a>
+      </div>
+
+      <table class="history-table" id="history-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Slides</th>
+            <th>Theme</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Download</th>
+          </tr>
+        </thead>
+        <tbody id="history-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">
+      <p>AI Presentation Generator &copy; 2026. Powered by Claude AI.</p>
+    </div>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>
