@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:3000'; // Change to Railway URL in production
+const API_BASE = 'https://backend-production-2c4d.up.railway.app'; // Railway production URL
 
 const api = {
   getToken() {
