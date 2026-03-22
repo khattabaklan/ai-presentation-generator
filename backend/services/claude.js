@@ -4,7 +4,7 @@ const client = new Anthropic();
 
 async function generatePresentationContent(assignmentText, slideCount = 10, colorTheme = 'professional') {
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20241022',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     messages: [
       {
@@ -149,7 +149,7 @@ async function parsePageContent(pageText, pageType, courseId) {
   if (!promptFn) throw new Error(`Unknown page type: ${pageType}`);
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20241022',
+    model: 'claude-sonnet-4-6',
     max_tokens: 8192,
     messages: [
       {
