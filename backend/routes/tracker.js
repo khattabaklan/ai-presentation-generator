@@ -21,8 +21,8 @@ router.post('/parse-page', authMiddleware, async (req, res) => {
 
     res.json(parsed);
   } catch (err) {
-    console.error('Parse page error:', err);
-    res.status(500).json({ error: 'Failed to parse page content' });
+    console.error('Parse page error:', err.message || err);
+    res.status(500).json({ error: `Parse failed: ${err.message || 'Unknown error'}` });
   }
 });
 

@@ -149,7 +149,7 @@ async function parsePageContent(pageText, pageType, courseId) {
   if (!promptFn) throw new Error(`Unknown page type: ${pageType}`);
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-6-20250514',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 8192,
     messages: [
       {
