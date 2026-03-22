@@ -1,6 +1,7 @@
 // ─── Deep Crawl Orchestrator ────────────────────────────────────────────────
-// Clicks through Brightspace like a student: opens each course, clicks Content,
-// Assignments, Quizzes — reads everything. Survives page navigations.
+// Navigates through every section of every Brightspace course:
+// Course Home → Content → Assignments → each Assignment Detail → Quizzes
+// The student watches it scroll through and read each page.
 
 const API_BASE = 'https://backend-production-2c4d.up.railway.app';
 
@@ -13,12 +14,7 @@ let crawlState = {
   currentCourseIndex: 0,
   assignments: [],
   currentAssignmentIndex: 0,
-  results: {
-    courses: [],
-    assignments: [],
-    quizzes: [],
-    materials: [],
-  },
+  results: { courses: [], assignments: [], quizzes: [], materials: [] },
   totalPages: 0,
   pagesCompleted: 0,
   error: null,
@@ -49,34 +45,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'PAGE_READY' && crawlState.active && sender.tab?.id === crawlState.tabId) {
-    console.log('[AA] PAGE_READY from:', sender.tab.url);
+    console.log('[AA] PAGE_READY, phase:', crawlState.phase, 'url:', sender.tab.url);
     if (crawlState._readyTimeout) clearTimeout(crawlState._readyTimeout);
-    const tabUrl = sender.tab.url || '';
-    setTimeout(() => onPageReady(tabUrl), 500);
+    setTimeout(() => onPageReady(), 600);
     return;
   }
 
   if (msg.type === 'PAGE_DATA' && crawlState.active) {
     console.log('[AA] PAGE_DATA:', msg.payload?.pageType, 'direct:', !!msg.payload?.directData);
     handlePageData(msg.payload);
-    return;
-  }
-
-  if (msg.type === 'NAVIGATE_FALLBACK' && crawlState.active) {
-    console.log('[AA] Navigate fallback to:', msg.url);
-    chrome.tabs.update(crawlState.tabId, { url: msg.url });
-    return;
-  }
-
-  if (msg.type === 'NAV_NOT_FOUND' && crawlState.active) {
-    console.log('[AA] Nav not found:', msg.target, '— using URL fallback');
-    navigateByUrl(msg.target);
-    return;
-  }
-
-  if (msg.type === 'CLICK_FAILED' && crawlState.active) {
-    console.log('[AA] Click failed:', msg.reason, '— skipping');
-    advanceToNextStep();
     return;
   }
 
@@ -87,86 +64,98 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ─── Crawl Lifecycle ────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-function startDeepCrawl(tabId, url) {
-  const baseUrl = new URL(url).origin;
+function getCurrentCourseName() {
+  const c = crawlState.courses[crawlState.currentCourseIndex];
+  return c ? c.name : '';
+}
 
-  crawlState = {
-    active: true,
-    tabId,
-    baseUrl,
-    phase: 'extract_courses',
-    courses: [],
-    currentCourseIndex: 0,
-    assignments: [],
-    currentAssignmentIndex: 0,
-    results: { courses: [], assignments: [], quizzes: [], materials: [] },
-    totalPages: 1,
-    pagesCompleted: 0,
-    error: null,
-    _readyTimeout: null,
-  };
-
-  // Detect where the user already is
-  chrome.tabs.get(tabId, (tab) => {
-    const currentUrl = tab.url || '';
-    const isHomepage = /\/d2l\/home\/?$/.test(currentUrl) || currentUrl.endsWith('/d2l/home');
-    const courseMatch = currentUrl.match(/\/d2l\/home\/(\d+)/);
-
-    if (isHomepage) {
-      // Already on homepage — just reload to trigger content script
-      broadcastProgress('Scanning your courses...');
-      chrome.tabs.reload(tabId);
-    } else if (courseMatch) {
-      // User is already inside a course — skip course finding, scan this course
-      broadcastProgress('Already in a course! Scanning it...');
-      const courseId = courseMatch[1];
-      const pageName = tab.title || 'Current Course';
-      crawlState.courses = [{ courseId, name: pageName, code: null, url: currentUrl }];
-      crawlState.results.courses = crawlState.courses;
-      crawlState.currentCourseIndex = 0;
-      crawlState.totalPages = 9;
-      crawlState.phase = 'click_content';
-      chrome.tabs.reload(tabId);
-    } else {
-      // On some other Brightspace page — go to homepage
-      broadcastProgress('Going to Brightspace homepage...');
-      chrome.tabs.update(tabId, { url: `${baseUrl}/d2l/home` });
-    }
-    setReadyTimeout();
-  });
+function getCurrentCourseId() {
+  const c = crawlState.courses[crawlState.currentCourseIndex];
+  return c ? c.courseId : null;
 }
 
 function cancelCrawl() {
   crawlState.active = false;
   crawlState.phase = 'idle';
-  crawlState.error = 'Cancelled by user';
+  if (crawlState._readyTimeout) clearTimeout(crawlState._readyTimeout);
   broadcastProgress('Crawl cancelled');
 }
 
-function getCurrentCourseName() {
-  if (crawlState.currentCourseIndex < crawlState.courses.length) {
-    return crawlState.courses[crawlState.currentCourseIndex].name;
-  }
-  return '';
+// ─── Start Crawl ────────────────────────────────────────────────────────────
+
+function startDeepCrawl(tabId, url) {
+  const baseUrl = new URL(url).origin;
+
+  crawlState = {
+    active: true, tabId, baseUrl,
+    phase: 'find_courses',
+    courses: [], currentCourseIndex: 0,
+    assignments: [], currentAssignmentIndex: 0,
+    results: { courses: [], assignments: [], quizzes: [], materials: [] },
+    totalPages: 1, pagesCompleted: 0,
+    error: null, _readyTimeout: null,
+  };
+
+  // Check if user is already inside a course
+  chrome.tabs.get(tabId, (tab) => {
+    const courseMatch = (tab.url || '').match(/\/d2l\/home\/(\d+)/);
+
+    if (courseMatch) {
+      // Already in a course — scan just this one
+      const courseId = courseMatch[1];
+      crawlState.courses = [{ courseId, name: tab.title || `Course ${courseId}`, code: null }];
+      crawlState.results.courses = crawlState.courses;
+      crawlState.totalPages = 5;
+      crawlState.phase = 'go_content';
+      broadcastProgress(`Scanning ${crawlState.courses[0].name}...`);
+      goToUrl(`${baseUrl}/d2l/le/content/${courseId}/Home`);
+    } else {
+      // Go to or stay on homepage to find courses
+      broadcastProgress('Finding your courses...');
+      const homepageUrl = `${baseUrl}/d2l/home`;
+      if ((tab.url || '').replace(/[#?].*$/, '').endsWith('/d2l/home')) {
+        chrome.tabs.reload(tabId);
+      } else {
+        chrome.tabs.update(tabId, { url: homepageUrl });
+      }
+      setReadyTimeout();
+    }
+  });
 }
 
-function getCurrentCourseId() {
-  if (crawlState.currentCourseIndex < crawlState.courses.length) {
-    return crawlState.courses[crawlState.currentCourseIndex].courseId;
-  }
-  return null;
+// ─── Navigate by URL ────────────────────────────────────────────────────────
+
+function goToUrl(url) {
+  console.log('[AA] Navigating to:', url);
+  chrome.tabs.update(crawlState.tabId, { url });
+  setReadyTimeout();
 }
 
-// ─── Page Ready — Dispatch Action Based on Phase ────────────────────────────
+function setReadyTimeout() {
+  if (crawlState._readyTimeout) clearTimeout(crawlState._readyTimeout);
+  crawlState._readyTimeout = setTimeout(() => {
+    if (!crawlState.active) return;
+    console.log('[AA] PAGE_READY timeout — injecting content script');
+    chrome.scripting.executeScript({
+      target: { tabId: crawlState.tabId },
+      files: ['content.js'],
+    }).then(() => {
+      setTimeout(() => onPageReady(), 1000);
+    }).catch((err) => {
+      console.error('[AA] Inject failed:', err);
+      skipCurrentStep();
+    });
+  }, 15000);
+}
 
-function onPageReady(tabUrl = '') {
+// ─── Page Ready — Tell Content Script What To Do ────────────────────────────
+
+function onPageReady() {
   if (!crawlState.active) return;
-  console.log('[AA] onPageReady, phase:', crawlState.phase, 'url:', tabUrl);
 
   const progress = {
-    phase: crawlState.phase,
     pagesCompleted: crawlState.pagesCompleted,
     totalPages: crawlState.totalPages,
     coursesFound: crawlState.results.courses.length,
@@ -174,68 +163,36 @@ function onPageReady(tabUrl = '') {
     currentCourse: getCurrentCourseName(),
   };
 
-  // Map phases to content.js actions
+  console.log('[AA] onPageReady, phase:', crawlState.phase);
+
   switch (crawlState.phase) {
-    case 'extract_courses':
+    case 'find_courses':
       sendAction('extract_courses', progress);
       break;
 
-    case 'click_course':
-      // Check if we've already navigated to the course page (PAGE_READY after click)
-      if (tabUrl.includes(`/d2l/home/${getCurrentCourseId()}`)) {
-        // We're on the course home — move to content
-        crawlState.phase = 'click_content';
-        broadcastProgress(`Inside ${getCurrentCourseName()}. Clicking Content...`);
-        sendAction('click_nav', progress, { target: 'content' });
-      } else {
-        // Still on homepage — click the course card
-        sendAction('click_course', progress, { courseId: getCurrentCourseId() });
-      }
-      break;
-
-    case 'click_content':
-      // After clicking Content, we land on the content page — read it
-      crawlState.phase = 'read_content';
+    case 'go_content':
+      broadcastProgress(`Reading content for ${getCurrentCourseName()}...`);
       sendAction('read_page', progress, { pageType: 'course_content' });
       break;
 
-    case 'read_content':
-      sendAction('read_page', progress, { pageType: 'course_content' });
-      break;
-
-    case 'click_assignments':
-      // After clicking Assignments, we land on the assignments list — read it
-      crawlState.phase = 'read_assignments';
+    case 'go_assignments':
+      broadcastProgress(`Reading assignments for ${getCurrentCourseName()}...`);
       sendAction('read_page', progress, { pageType: 'assignments_list' });
       break;
 
-    case 'read_assignments':
-      sendAction('read_page', progress, { pageType: 'assignments_list' });
-      break;
-
-    case 'click_assignment_detail': {
-      // After clicking an assignment link, we land on detail page — read it
-      crawlState.phase = 'read_assignment_detail';
-      sendAction('read_page', progress, { pageType: 'assignment_detail' });
-      break;
-    }
-
-    case 'read_assignment_detail':
+    case 'go_assignment_detail':
+      const a = crawlState.assignments[crawlState.currentAssignmentIndex];
+      broadcastProgress(`Reading: ${a?.title || 'assignment'}...`);
       sendAction('read_page', progress, { pageType: 'assignment_detail' });
       break;
 
-    case 'click_quizzes':
-      // After clicking Quizzes, we land on quizzes page — read it
-      crawlState.phase = 'read_quizzes';
-      sendAction('read_page', progress, { pageType: 'quizzes' });
-      break;
-
-    case 'read_quizzes':
+    case 'go_quizzes':
+      broadcastProgress(`Reading quizzes for ${getCurrentCourseName()}...`);
       sendAction('read_page', progress, { pageType: 'quizzes' });
       break;
 
     default:
-      console.log('[AA] Unknown phase:', crawlState.phase);
+      console.log('[AA] Unhandled phase in onPageReady:', crawlState.phase);
   }
 }
 
@@ -246,104 +203,89 @@ function sendAction(action, progress, data = {}) {
     progress,
     data,
   }).catch((err) => {
-    console.error('[AA] Failed to send action:', err);
-    // Try injecting content script
+    console.error('[AA] sendAction failed:', err);
     chrome.scripting.executeScript({
       target: { tabId: crawlState.tabId },
       files: ['content.js'],
     }).then(() => {
       setTimeout(() => {
-        chrome.tabs.sendMessage(crawlState.tabId, { type: 'CRAWL_ACTION', action, progress, data }).catch(() => {
-          advanceToNextStep();
-        });
-      }, 1000);
-    }).catch(() => advanceToNextStep());
+        chrome.tabs.sendMessage(crawlState.tabId, { type: 'CRAWL_ACTION', action, progress, data }).catch(() => skipCurrentStep());
+      }, 1500);
+    }).catch(() => skipCurrentStep());
   });
 }
 
-// ─── Page Data Handler — Advance the State Machine ──────────────────────────
+// ─── Handle Page Data — The State Machine ───────────────────────────────────
 
 async function handlePageData({ text, pageType, directData }) {
   if (!crawlState.active) return;
-
   crawlState.pagesCompleted++;
 
   try {
     let parsed;
-
     if (directData) {
       parsed = directData;
     } else {
-      broadcastProgress('Claude is reading the page...');
+      broadcastProgress('Claude is analyzing the page...');
       parsed = await callBackend('/tracker/parse-page', { text, pageType, courseId: getCurrentCourseId() });
     }
 
-    // Advance based on what we just received
-    switch (pageType || crawlState.phase) {
-      case 'courses':
-        handleCoursesResult(parsed);
-        break;
-      case 'course_content':
-        handleContentResult(parsed);
-        break;
-      case 'assignments_list':
-        handleAssignmentsListResult(parsed);
-        break;
-      case 'assignment_detail':
-        handleAssignmentDetailResult(parsed);
-        break;
-      case 'quizzes':
-        handleQuizzesResult(parsed);
-        break;
+    switch (pageType) {
+      case 'courses':       onCoursesParsed(parsed); break;
+      case 'course_content': onContentParsed(parsed); break;
+      case 'assignments_list': onAssignmentListParsed(parsed); break;
+      case 'assignment_detail': onAssignmentDetailParsed(parsed); break;
+      case 'quizzes':       onQuizzesParsed(parsed); break;
     }
   } catch (err) {
-    console.error('[AA] Crawl step error:', err);
-    advanceToNextStep();
+    console.error('[AA] Parse error:', err);
+    skipCurrentStep();
   }
 }
 
-// ─── State Handlers ─────────────────────────────────────────────────────────
+// ─── Phase Transitions ─────────────────────────────────────────────────────
 
-function handleCoursesResult(parsed) {
+function onCoursesParsed(parsed) {
   crawlState.courses = parsed.courses || [];
   crawlState.results.courses = crawlState.courses;
 
   if (crawlState.courses.length === 0) {
-    finishCrawl('No courses found');
+    finishCrawl('No courses found. Try starting the scan from inside a course.');
     return;
   }
 
-  // Estimate total: per course = click in + content + assignments list + ~5 details + quizzes = ~9 pages
-  crawlState.totalPages = 1 + crawlState.courses.length * 9;
+  crawlState.totalPages = crawlState.courses.length * 5; // estimate
+  broadcastProgress(`Found ${crawlState.courses.length} courses! Diving into ${crawlState.courses[0].name}...`);
 
-  broadcastProgress(`Found ${crawlState.courses.length} courses! Clicking into first course...`);
-
-  // Start: click into the first course
   crawlState.currentCourseIndex = 0;
-  crawlState.phase = 'click_course';
-
-  // Send click action to content.js (we're still on homepage)
-  onPageReady();
+  startCrawlingCurrentCourse();
 }
 
-function handleContentResult(parsed) {
+function startCrawlingCurrentCourse() {
   const courseId = getCurrentCourseId();
-  const materials = (parsed.materials || []).map((m) => ({ ...m, courseId }));
+  const name = getCurrentCourseName();
+  crawlState.assignments = [];
+  crawlState.currentAssignmentIndex = 0;
+
+  broadcastProgress(`Opening Content for ${name}...`);
+  crawlState.phase = 'go_content';
+  goToUrl(`${crawlState.baseUrl}/d2l/le/content/${courseId}/Home`);
+}
+
+function onContentParsed(parsed) {
+  const courseId = getCurrentCourseId();
+  const materials = (parsed.materials || []).map(m => ({ ...m, courseId }));
   crawlState.results.materials.push(...materials);
 
-  broadcastProgress(`Found ${materials.length} modules. Now checking assignments...`);
+  const topicCount = materials.reduce((sum, m) => sum + (m.topics?.length || 0), 0);
+  broadcastProgress(`Found ${materials.length} modules, ${topicCount} topics. Now checking assignments...`);
 
-  // Next: click Assignments nav link
-  crawlState.phase = 'click_assignments';
-
-  // We need to go back to course home to find the nav link
-  // Navigate to course home, then onPageReady will click Assignments
-  const courseHomeUrl = `${crawlState.baseUrl}/d2l/home/${courseId}`;
-  chrome.tabs.update(crawlState.tabId, { url: courseHomeUrl });
-  setReadyTimeout();
+  // Next: go to assignments page
+  crawlState.phase = 'go_assignments';
+  goToUrl(`${crawlState.baseUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}&isprv=0`);
 }
 
-function handleAssignmentsListResult(parsed) {
+function onAssignmentListParsed(parsed) {
   crawlState.assignments = parsed.assignments || [];
   const courseId = getCurrentCourseId();
 
@@ -352,193 +294,131 @@ function handleAssignmentsListResult(parsed) {
     a.assignmentType = 'dropbox';
   }
 
-  // Recalculate total pages
-  const remainingCourses = crawlState.courses.length - crawlState.currentCourseIndex - 1;
-  crawlState.totalPages = crawlState.pagesCompleted + crawlState.assignments.length + 2 + remainingCourses * 9;
+  // Update total estimate
+  const remaining = crawlState.courses.length - crawlState.currentCourseIndex - 1;
+  crawlState.totalPages = crawlState.pagesCompleted + crawlState.assignments.length + 1 + remaining * 5;
 
   if (crawlState.assignments.length > 0 && crawlState.assignments[0].detailUrl) {
-    broadcastProgress(`Found ${crawlState.assignments.length} assignments. Clicking into each one...`);
+    broadcastProgress(`Found ${crawlState.assignments.length} assignments. Reading each one...`);
     crawlState.currentAssignmentIndex = 0;
-    crawlState.phase = 'click_assignment_detail';
-
-    // Navigate back to assignments list to click the first one
-    navigateByUrl('assignments');
-    setReadyTimeout();
-  } else if (crawlState.assignments.length > 0) {
-    // No detail URLs — save what we have and move to quizzes
-    broadcastProgress(`Found ${crawlState.assignments.length} assignments. Checking quizzes...`);
-    crawlState.results.assignments.push(...crawlState.assignments);
-    crawlState.phase = 'click_quizzes';
-
-    // Go back to course home to click Quizzes
-    chrome.tabs.update(crawlState.tabId, { url: `${crawlState.baseUrl}/d2l/home/${courseId}` });
-    setReadyTimeout();
+    goToAssignmentDetail();
   } else {
-    broadcastProgress('No assignments found. Checking quizzes...');
-    crawlState.phase = 'click_quizzes';
-    chrome.tabs.update(crawlState.tabId, { url: `${crawlState.baseUrl}/d2l/home/${courseId}` });
-    setReadyTimeout();
+    // No detail URLs or no assignments
+    if (crawlState.assignments.length > 0) {
+      crawlState.results.assignments.push(...crawlState.assignments);
+    }
+    broadcastProgress(`${crawlState.assignments.length} assignments found. Checking quizzes...`);
+    goToQuizzes();
   }
 }
 
-function handleAssignmentDetailResult(parsed) {
-  const assignment = crawlState.assignments[crawlState.currentAssignmentIndex];
-  if (assignment && parsed) {
-    assignment.fullInstructions = parsed.fullInstructions || null;
-    assignment.rubric = parsed.rubric || null;
-    assignment.requirements = parsed.requirements || [];
-    assignment.attachments = parsed.attachments || [];
+function goToAssignmentDetail() {
+  const a = crawlState.assignments[crawlState.currentAssignmentIndex];
+  if (!a?.detailUrl) {
+    // Skip to next or finish assignments
+    crawlState.currentAssignmentIndex++;
+    if (crawlState.currentAssignmentIndex < crawlState.assignments.length) {
+      goToAssignmentDetail();
+    } else {
+      crawlState.results.assignments.push(...crawlState.assignments);
+      saveProgressToBackend();
+      goToQuizzes();
+    }
+    return;
+  }
+
+  const url = a.detailUrl.startsWith('http') ? a.detailUrl : `${crawlState.baseUrl}${a.detailUrl}`;
+  broadcastProgress(`Opening assignment ${crawlState.currentAssignmentIndex + 1}/${crawlState.assignments.length}: ${a.title}...`);
+  crawlState.phase = 'go_assignment_detail';
+  goToUrl(url);
+}
+
+function onAssignmentDetailParsed(parsed) {
+  const a = crawlState.assignments[crawlState.currentAssignmentIndex];
+  if (a && parsed) {
+    a.fullInstructions = parsed.fullInstructions || null;
+    a.rubric = parsed.rubric || null;
+    a.requirements = parsed.requirements || [];
+    a.attachments = parsed.attachments || [];
   }
 
   crawlState.currentAssignmentIndex++;
 
   if (crawlState.currentAssignmentIndex < crawlState.assignments.length) {
-    const next = crawlState.assignments[crawlState.currentAssignmentIndex];
-    if (next.detailUrl) {
-      broadcastProgress(`Reading assignment ${crawlState.currentAssignmentIndex + 1}/${crawlState.assignments.length}...`);
-
-      // Navigate back to assignments list to click the next one
-      crawlState.phase = 'click_assignment_detail';
-      navigateByUrl('assignments');
-      setReadyTimeout();
-    } else {
-      handleAssignmentDetailResult(null);
-    }
+    goToAssignmentDetail();
   } else {
-    // Done with assignment details
     crawlState.results.assignments.push(...crawlState.assignments);
     saveProgressToBackend();
-
-    // Move to quizzes
     broadcastProgress('Done with assignments. Checking quizzes...');
-    crawlState.phase = 'click_quizzes';
-    const courseId = getCurrentCourseId();
-    chrome.tabs.update(crawlState.tabId, { url: `${crawlState.baseUrl}/d2l/home/${courseId}` });
-    setReadyTimeout();
+    goToQuizzes();
   }
 }
 
-function handleQuizzesResult(parsed) {
+function goToQuizzes() {
   const courseId = getCurrentCourseId();
-  const quizzes = (parsed.quizzes || []).map((q) => ({ ...q, courseId }));
+  crawlState.phase = 'go_quizzes';
+  goToUrl(`${crawlState.baseUrl}/d2l/lms/quizzing/user/quizzes_list.d2l?ou=${courseId}`);
+}
+
+function onQuizzesParsed(parsed) {
+  const courseId = getCurrentCourseId();
+  const quizzes = (parsed.quizzes || []).map(q => ({ ...q, courseId }));
   crawlState.results.quizzes.push(...quizzes);
 
   broadcastProgress(`Found ${quizzes.length} quizzes.`);
 
   // Move to next course
-  moveToNextCourse();
-}
-
-function moveToNextCourse() {
   crawlState.currentCourseIndex++;
-
   if (crawlState.currentCourseIndex < crawlState.courses.length) {
-    const name = getCurrentCourseName();
-    broadcastProgress(`Moving to next course: ${name}...`);
-
-    crawlState.assignments = [];
-    crawlState.currentAssignmentIndex = 0;
-
-    // Go back to homepage to click the next course
-    crawlState.phase = 'click_course';
-    chrome.tabs.update(crawlState.tabId, { url: `${crawlState.baseUrl}/d2l/home` });
-    setReadyTimeout();
+    broadcastProgress(`Moving to next course: ${getCurrentCourseName()}...`);
+    startCrawlingCurrentCourse();
   } else {
     finishCrawl();
   }
 }
 
-function advanceToNextStep() {
-  console.log('[AA] advanceToNextStep, current phase:', crawlState.phase);
-
+function skipCurrentStep() {
+  console.log('[AA] Skipping phase:', crawlState.phase);
   switch (crawlState.phase) {
-    case 'extract_courses':
-      finishCrawl('Failed to find courses');
+    case 'find_courses':
+      finishCrawl('Could not find courses');
       break;
-    case 'click_course':
-    case 'click_content':
-    case 'read_content':
-      // Skip content, try assignments
-      crawlState.phase = 'click_assignments';
-      chrome.tabs.update(crawlState.tabId, { url: `${crawlState.baseUrl}/d2l/home/${getCurrentCourseId()}` });
-      setReadyTimeout();
+    case 'go_content':
+      crawlState.phase = 'go_assignments';
+      goToUrl(`${crawlState.baseUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${getCurrentCourseId()}&isprv=0`);
       break;
-    case 'click_assignments':
-    case 'read_assignments':
-      // Skip assignments, try quizzes
-      crawlState.phase = 'click_quizzes';
-      chrome.tabs.update(crawlState.tabId, { url: `${crawlState.baseUrl}/d2l/home/${getCurrentCourseId()}` });
-      setReadyTimeout();
+    case 'go_assignments':
+      goToQuizzes();
       break;
-    case 'click_assignment_detail':
-    case 'read_assignment_detail':
+    case 'go_assignment_detail':
       crawlState.currentAssignmentIndex++;
       if (crawlState.currentAssignmentIndex < crawlState.assignments.length) {
-        crawlState.phase = 'click_assignment_detail';
-        navigateByUrl('assignments');
-        setReadyTimeout();
+        goToAssignmentDetail();
       } else {
         crawlState.results.assignments.push(...crawlState.assignments);
-        crawlState.phase = 'click_quizzes';
-        chrome.tabs.update(crawlState.tabId, { url: `${crawlState.baseUrl}/d2l/home/${getCurrentCourseId()}` });
-        setReadyTimeout();
+        goToQuizzes();
       }
       break;
-    case 'click_quizzes':
-    case 'read_quizzes':
-      // Skip quizzes, move to next course
-      moveToNextCourse();
+    case 'go_quizzes':
+      crawlState.currentCourseIndex++;
+      if (crawlState.currentCourseIndex < crawlState.courses.length) {
+        startCrawlingCurrentCourse();
+      } else {
+        finishCrawl();
+      }
       break;
     default:
       finishCrawl();
   }
 }
 
-// ─── URL Fallback Navigation ────────────────────────────────────────────────
-// When clicking nav links fails, navigate by URL directly
-
-function navigateByUrl(target) {
-  const courseId = getCurrentCourseId();
-  const urls = {
-    content: `${crawlState.baseUrl}/d2l/le/content/${courseId}/Home`,
-    assignments: `${crawlState.baseUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}&isprv=0`,
-    quizzes: `${crawlState.baseUrl}/d2l/lms/quizzing/user/quizzes_list.d2l?ou=${courseId}`,
-  };
-
-  if (urls[target]) {
-    chrome.tabs.update(crawlState.tabId, { url: urls[target] });
-  }
-}
-
-// ─── Ready Timeout ──────────────────────────────────────────────────────────
-// If PAGE_READY doesn't arrive in 15s, try injecting content script
-
-function setReadyTimeout() {
-  if (crawlState._readyTimeout) clearTimeout(crawlState._readyTimeout);
-
-  crawlState._readyTimeout = setTimeout(() => {
-    if (!crawlState.active) return;
-    console.log('[AA] PAGE_READY timeout — injecting content script');
-
-    chrome.scripting.executeScript({
-      target: { tabId: crawlState.tabId },
-      files: ['content.js'],
-    }).then(() => {
-      setTimeout(() => onPageReady(), 1000);
-    }).catch((err) => {
-      console.error('[AA] Inject failed:', err);
-      advanceToNextStep();
-    });
-  }, 15000);
-}
-
-// ─── Finish & Save ──────────────────────────────────────────────────────────
+// ─── Save & Finish ──────────────────────────────────────────────────────────
 
 async function saveProgressToBackend() {
   try {
     await callBackend('/tracker/deep-import', crawlState.results);
   } catch (err) {
-    console.error('[AA] Save progress error:', err);
+    console.error('[AA] Save error:', err);
   }
 }
 
@@ -554,13 +434,12 @@ async function finishCrawl(errorMsg) {
   }
 
   try {
-    broadcastProgress('Saving everything to Academic Assistant...');
+    broadcastProgress('Saving everything...');
     await callBackend('/tracker/deep-import', crawlState.results);
     crawlState.phase = 'done';
     broadcastProgress('Deep scan complete!');
   } catch (err) {
-    console.error('[AA] Final save error:', err);
-    crawlState.error = 'Failed to save results';
+    crawlState.error = 'Failed to save';
     crawlState.phase = 'error';
     broadcastProgress('Error saving results');
   }
@@ -572,13 +451,13 @@ async function finishCrawl(errorMsg) {
         courses: crawlState.results.courses.length,
         assignments: crawlState.results.assignments.length,
         quizzes: crawlState.results.quizzes.length,
-        materials: crawlState.results.materials.reduce((sum, m) => sum + (m.topics?.length || 0), 0),
+        materials: crawlState.results.materials.reduce((s, m) => s + (m.topics?.length || 0), 0),
       },
     });
   } catch (e) {}
 }
 
-// ─── Backend API ────────────────────────────────────────────────────────────
+// ─── Backend ────────────────────────────────────────────────────────────────
 
 async function callBackend(path, body) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -586,13 +465,12 @@ async function callBackend(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Backend request failed');
+  if (!res.ok) throw new Error(data.error || 'Backend failed');
   return data;
 }
 
-// ─── Progress Broadcasting ──────────────────────────────────────────────────
+// ─── Progress ───────────────────────────────────────────────────────────────
 
 function broadcastProgress(message) {
   const status = {
@@ -606,9 +484,7 @@ function broadcastProgress(message) {
     assignmentsFound: crawlState.results.assignments.length,
     currentCourse: getCurrentCourseName(),
   };
-
   chrome.runtime.sendMessage(status).catch(() => {});
-
   if (crawlState.tabId) {
     chrome.tabs.sendMessage(crawlState.tabId, status).catch(() => {});
   }
