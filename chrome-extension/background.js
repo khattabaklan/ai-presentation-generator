@@ -49,6 +49,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === 'PAGE_READY' && crawlState.active && sender.tab?.id === crawlState.tabId) {
     // Content script loaded on the new page — tell it what to do
+    console.log('[AA] PAGE_READY received, phase:', crawlState.phase);
+    if (crawlState._readyTimeout) clearTimeout(crawlState._readyTimeout);
     setTimeout(() => handlePageReady(), 500);
     return;
   }
@@ -87,8 +89,33 @@ function startDeepCrawl(tabId, url) {
 
   broadcastProgress('Navigating to Brightspace homepage...');
 
-  // Navigate to the homepage
-  chrome.tabs.update(tabId, { url: `${baseUrl}/d2l/home` });
+  // Navigate to the homepage — force reload even if already on this page
+  const targetUrl = `${baseUrl}/d2l/home`;
+  chrome.tabs.get(tabId, (tab) => {
+    if (tab.url && tab.url.replace(/[#?].*$/, '') === targetUrl) {
+      // Already on the homepage — reload the tab to trigger content script
+      chrome.tabs.reload(tabId);
+      // Set fallback in case PAGE_READY doesn't arrive
+      crawlState._readyTimeout = setTimeout(() => {
+        if (!crawlState.active) return;
+        console.log('[AA] Initial PAGE_READY timeout — injecting content script');
+        chrome.scripting.executeScript({
+          target: { tabId: crawlState.tabId },
+          files: ['content.js'],
+        }).then(() => {
+          setTimeout(() => handlePageReady(), 1000);
+        }).catch((err) => {
+          console.error('[AA] Failed to inject:', err);
+          crawlState.error = 'Could not connect to the page. Make sure you are on Brightspace.';
+          crawlState.phase = 'error';
+          crawlState.active = false;
+          broadcastProgress('Error: Could not connect to the page');
+        });
+      }, 10000);
+    } else {
+      navigateWithFallback(targetUrl);
+    }
+  });
 }
 
 function cancelCrawl() {
@@ -310,6 +337,29 @@ function advanceToNextStep() {
 
 // ─── Navigation Helpers ─────────────────────────────────────────────────────
 
+// Navigate and set a fallback: if PAGE_READY doesn't arrive in 15s, try sending CRAWL_PAGE directly
+function navigateWithFallback(url) {
+  console.log('[AA] Navigating to:', url);
+  if (crawlState._readyTimeout) clearTimeout(crawlState._readyTimeout);
+
+  chrome.tabs.update(crawlState.tabId, { url });
+
+  crawlState._readyTimeout = setTimeout(() => {
+    if (!crawlState.active) return;
+    console.log('[AA] PAGE_READY timeout — trying to inject content script and send CRAWL_PAGE directly');
+    // Try injecting the content script manually in case it didn't auto-inject
+    chrome.scripting.executeScript({
+      target: { tabId: crawlState.tabId },
+      files: ['content.js'],
+    }).then(() => {
+      setTimeout(() => handlePageReady(), 1000);
+    }).catch((err) => {
+      console.error('[AA] Failed to inject content script:', err);
+      advanceToNextStep();
+    });
+  }, 15000);
+}
+
 function getCurrentCourseId() {
   if (crawlState.currentCourseIndex < crawlState.courses.length) {
     return crawlState.courses[crawlState.currentCourseIndex].courseId;
@@ -321,9 +371,7 @@ function navigateToAssignmentsList() {
   const courseId = getCurrentCourseId();
   const courseName = getCurrentCourseName();
   broadcastProgress(`Scanning assignments for ${courseName}...`);
-  chrome.tabs.update(crawlState.tabId, {
-    url: `${crawlState.baseUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}&isprv=0`,
-  });
+  navigateWithFallback(`${crawlState.baseUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}&isprv=0`);
 }
 
 function navigateToAssignmentDetail() {
@@ -338,23 +386,19 @@ function navigateToAssignmentDetail() {
     : `${crawlState.baseUrl}${assignment.detailUrl}`;
 
   broadcastProgress(`Reading: ${assignment.title}...`);
-  chrome.tabs.update(crawlState.tabId, { url });
+  navigateWithFallback(url);
 }
 
 function navigateToQuizzes() {
   const courseId = getCurrentCourseId();
   broadcastProgress(`Scanning quizzes for ${getCurrentCourseName()}...`);
-  chrome.tabs.update(crawlState.tabId, {
-    url: `${crawlState.baseUrl}/d2l/lms/quizzing/user/quizzes_list.d2l?ou=${courseId}`,
-  });
+  navigateWithFallback(`${crawlState.baseUrl}/d2l/lms/quizzing/user/quizzes_list.d2l?ou=${courseId}`);
 }
 
 function navigateToCourseContent() {
   const courseId = getCurrentCourseId();
   broadcastProgress(`Reading course materials for ${getCurrentCourseName()}...`);
-  chrome.tabs.update(crawlState.tabId, {
-    url: `${crawlState.baseUrl}/d2l/le/content/${courseId}/Home`,
-  });
+  navigateWithFallback(`${crawlState.baseUrl}/d2l/le/content/${courseId}/Home`);
 }
 
 // ─── Finish & Save ──────────────────────────────────────────────────────────
