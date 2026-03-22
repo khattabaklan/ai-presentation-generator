@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const generateRoutes = require('./routes/generate');
 const billingRoutes = require('./routes/billing');
 const historyRoutes = require('./routes/history');
+const trackerRoutes = require('./routes/tracker');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ app.use('/auth', authRoutes);
 app.use('/generate', generateRoutes);
 app.use('/billing', billingRoutes);
 app.use('/history', historyRoutes);
+app.use('/tracker', trackerRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

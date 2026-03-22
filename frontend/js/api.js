@@ -93,4 +93,43 @@ const api = {
   createCheckout() {
     return this.request('/billing/checkout', { method: 'POST' });
   },
+
+  // Tracker
+  trackerSaveCredentials(lmsUrl, username, password, platform = 'brightspace') {
+    return this.request('/tracker/credentials', {
+      method: 'POST',
+      body: { lmsUrl, username, password, platform },
+    });
+  },
+
+  trackerGetCredentials() {
+    return this.request('/tracker/credentials');
+  },
+
+  trackerDeleteCredentials() {
+    return this.request('/tracker/credentials', { method: 'DELETE' });
+  },
+
+  trackerStartSync(platform = 'brightspace') {
+    return this.request('/tracker/sync', {
+      method: 'POST',
+      body: { platform },
+    });
+  },
+
+  trackerGetSyncStatus(syncId) {
+    return this.request(`/tracker/sync/${syncId}`);
+  },
+
+  trackerGetAssignments() {
+    return this.request('/tracker/assignments');
+  },
+
+  trackerGetCourses() {
+    return this.request('/tracker/courses');
+  },
+
+  trackerGetSummary() {
+    return this.request('/tracker/summary');
+  },
 };

@@ -32,6 +32,7 @@ const auth = {
       const user = api.getUser();
       navLinks.innerHTML = `
         <li><a href="app.html">Generator</a></li>
+        <li><a href="tracker.html">Tracker</a></li>
         <li><a href="dashboard.html">Dashboard</a></li>
         <li><a href="pricing.html">Pricing</a></li>
         <li><a href="#" id="logout-link">Logout</a></li>

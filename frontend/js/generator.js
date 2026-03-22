@@ -13,6 +13,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const docxBtn = document.getElementById('download-docx');
   const newGenBtn = document.getElementById('new-generation');
 
+  // Pre-fill from tracker if assignment data was passed
+  const prefill = localStorage.getItem('prefill_assignment');
+  if (prefill) {
+    document.getElementById('assignment-text').value = prefill;
+    localStorage.removeItem('prefill_assignment');
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorAlert.classList.add('hidden');

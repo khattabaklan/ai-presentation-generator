@@ -1,0 +1,277 @@
+/* Tracker Page Styles */
+
+.tracker-page {
+  padding: 40px 0;
+}
+
+.tracker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.tracker-header h1 {
+  font-size: 1.8rem;
+  margin-bottom: 4px;
+}
+
+.tracker-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.tracker-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Setup Card */
+.setup-card {
+  max-width: 520px;
+  margin: 60px auto;
+  padding: 40px;
+}
+
+.setup-card h1 {
+  font-size: 1.6rem;
+  margin-bottom: 8px;
+}
+
+.setup-card .subtitle {
+  color: var(--text-secondary);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+/* Urgency Banner */
+.urgency-banner {
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.urgency-banner.urgency-red {
+  background: #FEF2F2;
+  color: #991B1B;
+  border: 1px solid #FECACA;
+}
+
+.urgency-banner.urgency-yellow {
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+.urgency-banner.urgency-green {
+  background: #F0FDF4;
+  color: #166534;
+  border: 1px solid #BBF7D0;
+}
+
+/* Filter Bar */
+.filter-bar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.filter-group select {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--surface);
+}
+
+/* Assignment Cards */
+.assignment-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.assignment-card:hover {
+  box-shadow: var(--shadow);
+}
+
+.assignment-card.urgency-overdue {
+  border-left: 4px solid var(--error);
+}
+
+.assignment-card.urgency-due_today {
+  border-left: 4px solid var(--error);
+}
+
+.assignment-card.urgency-due_soon {
+  border-left: 4px solid var(--warning);
+}
+
+.assignment-card.urgency-this_week {
+  border-left: 4px solid #F59E0B;
+}
+
+.assignment-card.urgency-upcoming {
+  border-left: 4px solid var(--primary);
+}
+
+.assignment-card.urgency-none {
+  border-left: 4px solid var(--border);
+}
+
+.assignment-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.assignment-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.assignment-title a {
+  color: inherit;
+}
+
+.assignment-title a:hover {
+  color: var(--primary);
+}
+
+.assignment-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.assignment-meta span {
+  white-space: nowrap;
+}
+
+.assignment-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.assignment-actions .btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+}
+
+/* Due date badges */
+.due-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.due-overdue { background: #FEE2E2; color: #991B1B; }
+.due-today { background: #FEE2E2; color: #991B1B; }
+.due-soon { background: #FEF3C7; color: #92400E; }
+.due-week { background: #FEF3C7; color: #92400E; }
+.due-upcoming { background: #DBEAFE; color: #1E40AF; }
+
+/* Course group headers */
+.course-group-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 20px 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.course-group-header:first-child {
+  padding-top: 0;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal-content {
+  width: 90%;
+  max-width: 440px;
+  padding: 32px;
+}
+
+.modal-content h2 {
+  margin-bottom: 8px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .tracker-header {
+    flex-direction: column;
+  }
+
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .assignment-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .assignment-actions {
+    width: 100%;
+  }
+
+  .assignment-actions .btn {
+    flex: 1;
+  }
+}
