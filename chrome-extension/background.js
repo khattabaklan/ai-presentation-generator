@@ -108,15 +108,31 @@ function startDeepCrawl(tabId, url) {
     _readyTimeout: null,
   };
 
-  broadcastProgress('Navigating to Brightspace homepage...');
-
-  // Go to homepage — either reload or navigate
-  const targetUrl = `${baseUrl}/d2l/home`;
+  // Detect where the user already is
   chrome.tabs.get(tabId, (tab) => {
-    if (tab.url && tab.url.replace(/[#?].*$/, '') === targetUrl) {
+    const currentUrl = tab.url || '';
+    const isHomepage = /\/d2l\/home\/?$/.test(currentUrl) || currentUrl.endsWith('/d2l/home');
+    const courseMatch = currentUrl.match(/\/d2l\/home\/(\d+)/);
+
+    if (isHomepage) {
+      // Already on homepage — just reload to trigger content script
+      broadcastProgress('Scanning your courses...');
+      chrome.tabs.reload(tabId);
+    } else if (courseMatch) {
+      // User is already inside a course — skip course finding, scan this course
+      broadcastProgress('Already in a course! Scanning it...');
+      const courseId = courseMatch[1];
+      const pageName = tab.title || 'Current Course';
+      crawlState.courses = [{ courseId, name: pageName, code: null, url: currentUrl }];
+      crawlState.results.courses = crawlState.courses;
+      crawlState.currentCourseIndex = 0;
+      crawlState.totalPages = 9;
+      crawlState.phase = 'click_content';
       chrome.tabs.reload(tabId);
     } else {
-      chrome.tabs.update(tabId, { url: targetUrl });
+      // On some other Brightspace page — go to homepage
+      broadcastProgress('Going to Brightspace homepage...');
+      chrome.tabs.update(tabId, { url: `${baseUrl}/d2l/home` });
     }
     setReadyTimeout();
   });

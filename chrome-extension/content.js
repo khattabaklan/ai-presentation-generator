@@ -261,11 +261,40 @@
 
   // ─── DOM Extractors ───────────────────────────────────────────────────────
 
+  // Recursively search through Shadow DOM to find all elements matching a selector
+  function deepQueryAll(root, selector) {
+    const results = [...root.querySelectorAll(selector)];
+
+    // Search inside shadow roots
+    root.querySelectorAll('*').forEach((el) => {
+      if (el.shadowRoot) {
+        results.push(...deepQueryAll(el.shadowRoot, selector));
+      }
+    });
+
+    // Also check iframes on same origin
+    root.querySelectorAll('iframe').forEach((iframe) => {
+      try {
+        if (iframe.contentDocument) {
+          results.push(...deepQueryAll(iframe.contentDocument, selector));
+        }
+      } catch (e) {
+        // Cross-origin iframe, skip
+      }
+    });
+
+    return results;
+  }
+
   function extractCoursesFromDOM() {
     const courses = [];
     const seen = new Set();
 
-    document.querySelectorAll('a[href*="/d2l/home/"]').forEach((link) => {
+    // Search everywhere including Shadow DOM and iframes
+    const allLinks = deepQueryAll(document, 'a[href*="/d2l/home/"]');
+    console.log('[AA] Found links with /d2l/home/:', allLinks.length);
+
+    allLinks.forEach((link) => {
       const href = link.getAttribute('href') || '';
       const match = href.match(/\/d2l\/home\/(\d+)/);
       if (!match) return;
@@ -276,21 +305,53 @@
 
       let name = link.textContent.trim();
       if (!name || name.length < 3) {
-        const card = link.closest('[class*="card"], [class*="course"], [class*="enrollment"]');
-        if (card) name = card.textContent.trim().split('\n')[0].trim();
+        // Walk up to find a parent with text
+        let parent = link.parentElement;
+        for (let i = 0; i < 5 && parent; i++) {
+          const text = parent.textContent.trim();
+          if (text && text.length > 3 && text.length < 300) {
+            name = text.split('\n').filter(l => l.trim().length > 2)[0]?.trim() || text.substring(0, 200);
+            break;
+          }
+          parent = parent.parentElement;
+        }
       }
       if (!name || name.length < 3) return;
+
+      // Clean up name — take first meaningful line
+      name = name.split('\n')[0].trim();
+      if (name.length > 200) name = name.substring(0, 200);
 
       const codeMatch = name.match(/\(([A-Z]{2,5}[-\s]?\d{3,5}[A-Za-z0-9-]*)\)/);
 
       courses.push({
         courseId,
-        name: name.substring(0, 200),
+        name,
         code: codeMatch ? codeMatch[1].trim() : null,
         url: `${window.location.origin}/d2l/home/${courseId}`,
       });
     });
 
+    // Fallback: search the entire page HTML for /d2l/home/{id} patterns
+    if (courses.length === 0) {
+      console.log('[AA] No courses from DOM, trying HTML regex fallback');
+      const html = document.documentElement.innerHTML;
+      const regex = /\/d2l\/home\/(\d{4,})/g;
+      let m;
+      while ((m = regex.exec(html)) !== null) {
+        const courseId = m[1];
+        if (seen.has(courseId)) continue;
+        seen.add(courseId);
+        courses.push({
+          courseId,
+          name: `Course ${courseId}`,
+          code: null,
+          url: `${window.location.origin}/d2l/home/${courseId}`,
+        });
+      }
+    }
+
+    console.log('[AA] Extracted courses:', courses.length, courses.map(c => c.name));
     return courses;
   }
 
@@ -300,16 +361,34 @@
   const actions = {
     // Phase: courses — find all courses, highlight cards, send data
     async extract_courses(progress) {
-      updateOverlay('Finding your courses...', progress.pagesCompleted, progress.totalPages, 0, 0);
-      await new Promise((r) => setTimeout(r, 2000)); // Wait for widgets to load
+      updateOverlay('Waiting for courses to load...', progress.pagesCompleted, progress.totalPages, 0, 0);
 
-      // Highlight course cards
-      highlightAll('a[href*="/d2l/home/"]');
+      // Wait for Brightspace widgets to load — they're slow and dynamic
+      await new Promise((r) => setTimeout(r, 3000));
+
+      // Scroll to trigger lazy loading
       await smoothScrollToBottom();
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 1500));
 
-      const courses = extractCoursesFromDOM();
-      console.log('[AA] Found courses:', courses.length);
+      // Try to find courses — retry a few times as widgets load
+      let courses = [];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        courses = extractCoursesFromDOM();
+        if (courses.length > 0) break;
+        console.log(`[AA] Attempt ${attempt + 1}: no courses yet, waiting...`);
+        updateOverlay('Looking for course widgets...', progress.pagesCompleted, progress.totalPages, 0, 0);
+        await new Promise((r) => setTimeout(r, 2000));
+        // Scroll again to trigger any remaining lazy loads
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        await new Promise((r) => setTimeout(r, 500));
+        await smoothScrollToBottom();
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      // Highlight found course links
+      const highlighted = highlightAll('a[href*="/d2l/home/"]');
+      console.log('[AA] Highlighted course links:', highlighted);
+      await new Promise((r) => setTimeout(r, 800));
 
       clearHighlights();
       window.scrollTo({ top: 0, behavior: 'smooth' });
