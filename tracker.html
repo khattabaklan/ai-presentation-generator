@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assignment Tracker — Academic Command Center</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/tracker.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="navbar-brand">AI Slides</a>
+      <ul class="navbar-links" id="nav-links"></ul>
+    </div>
+  </nav>
+
+  <div class="container tracker-page">
+
+    <!-- Setup Section — shown when no LMS credentials exist -->
+    <div id="setup-section" class="hidden">
+      <div class="setup-card card">
+        <h1>Connect Your LMS</h1>
+        <p class="subtitle">Link your Brightspace account to automatically track all your assignments, due dates, and grades across every course.</p>
+
+        <div id="setup-error" class="alert alert-error hidden"></div>
+
+        <form id="credentials-form">
+          <div class="form-group">
+            <label for="lms-url">Brightspace URL</label>
+            <input type="url" id="lms-url" placeholder="https://brightspace.youruniversity.edu" required>
+            <small style="color: var(--text-secondary);">Your university's Brightspace login page URL</small>
+          </div>
+          <div class="form-group">
+            <label for="lms-username">Username</label>
+            <input type="text" id="lms-username" placeholder="Your university username" required autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="lms-password">Password</label>
+            <input type="password" id="lms-password" placeholder="Your university password" required autocomplete="current-password">
+          </div>
+
+          <div class="alert alert-info">
+            Your credentials are encrypted with AES-256-GCM before storage. They are only decrypted during sync and never logged.
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Connect & Start First Sync</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Dashboard Section — shown when credentials exist -->
+    <div id="dashboard-section" class="hidden">
+
+      <!-- Header -->
+      <div class="tracker-header">
+        <div>
+          <h1>Assignment Tracker</h1>
+          <p id="last-sync" class="subtitle">Last synced: never</p>
+        </div>
+        <div class="tracker-actions">
+          <button class="btn btn-primary" id="sync-btn">Sync Now</button>
+          <button class="btn btn-outline" id="settings-btn">LMS Settings</button>
+        </div>
+      </div>
+
+      <!-- Sync Progress -->
+      <div id="sync-progress" class="card hidden" style="text-align: center; padding: 24px;">
+        <div class="spinner"></div>
+        <p id="sync-status-text" class="progress-text">Starting sync...</p>
+      </div>
+
+      <!-- Urgency Banner -->
+      <div id="urgency-banner" class="urgency-banner hidden"></div>
+
+      <!-- Stats Row -->
+      <div class="stats-row" id="tracker-stats">
+        <div class="card stat-card">
+          <div class="value" id="stat-due-week">-</div>
+          <div class="label">Due This Week</div>
+        </div>
+        <div class="card stat-card">
+          <div class="value" id="stat-overdue">-</div>
+          <div class="label">Overdue</div>
+        </div>
+        <div class="card stat-card">
+          <div class="value" id="stat-completed">-</div>
+          <div class="label">Completed</div>
+        </div>
+        <div class="card stat-card">
+          <div class="value" id="stat-courses">-</div>
+          <div class="label">Courses</div>
+        </div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Course:</label>
+          <select id="filter-course">
+            <option value="all">All Courses</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Status:</label>
+          <select id="filter-status">
+            <option value="all">All</option>
+            <option value="not_submitted">Not Submitted</option>
+            <option value="submitted">Submitted</option>
+            <option value="graded">Graded</option>
+            <option value="overdue">Overdue</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Type:</label>
+          <select id="filter-type">
+            <option value="all">All Types</option>
+            <option value="dropbox">Assignments</option>
+            <option value="quiz">Quizzes</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Assignments List -->
+      <div id="assignments-list"></div>
+
+      <!-- Empty State -->
+      <div id="empty-assignments" class="card hidden" style="text-align: center; padding: 48px;">
+        <p style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 16px;">No assignments found yet.</p>
+        <p style="color: var(--text-secondary);">Click "Sync Now" to pull assignments from Brightspace.</p>
+      </div>
+
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+      <div class="modal-content card">
+        <h2>LMS Settings</h2>
+        <div id="current-lms-info" style="margin: 16px 0; color: var(--text-secondary);"></div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button class="btn btn-outline" id="close-settings">Close</button>
+          <button class="btn btn-accent" id="disconnect-lms">Disconnect LMS</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Academic Command Center &copy; 2026. Powered by Claude AI.</p>
+    </div>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/tracker.js"></script>
+</body>
+</html>
