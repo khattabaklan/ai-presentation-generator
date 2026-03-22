@@ -168,4 +168,69 @@ async function parsePageContent(pageText, pageType, courseId) {
   return JSON.parse(jsonMatch[0]);
 }
 
-module.exports = { generatePresentationContent, parsePageContent };
+// ─── Written Content Generation ─────────────────────────────────────────────
+
+const WRITTEN_PROMPTS = {
+  essay: `Write a well-structured academic essay based on the assignment instructions below.
+Include an introduction with a clear thesis, body paragraphs with evidence and analysis, and a conclusion.
+Use formal academic tone. If citation style is specified, follow it.`,
+
+  reflection: `Write a thoughtful personal reflection based on the assignment instructions below.
+Use first person. Connect personal experiences to course concepts. Show critical thinking and self-awareness.
+Be genuine and introspective, not generic.`,
+
+  notes: `Create comprehensive study notes based on the assignment/course content below.
+Organize by topic with clear headings. Include key concepts, definitions, important details, and connections between ideas.
+Make it scannable and useful for exam prep.`,
+
+  outline: `Create a detailed assignment outline based on the instructions below.
+Include a thesis/main argument, organized sections with sub-points, evidence to include, and a conclusion plan.
+This should serve as a roadmap for writing the full assignment.`,
+};
+
+async function generateWrittenContent(assignmentText, outputType) {
+  const systemPrompt = WRITTEN_PROMPTS[outputType] || WRITTEN_PROMPTS.essay;
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 8192,
+    messages: [
+      {
+        role: 'user',
+        content: `${systemPrompt}
+
+ASSIGNMENT INSTRUCTIONS:
+${assignmentText}
+
+Respond with ONLY valid JSON in this format:
+{
+  "title": "Title of the document",
+  "outputType": "${outputType}",
+  "sections": [
+    {
+      "heading": "Section Heading",
+      "content": "Full paragraph text for this section. Use \\n for paragraph breaks within a section."
+    }
+  ],
+  "references": ["Reference 1 in proper format", "Reference 2"]
+}
+
+Write substantively — each section should have real, detailed content appropriate for a university assignment.
+If references aren't needed (like for reflections or notes), return an empty array.`,
+      },
+    ],
+  });
+
+  const text = response.content[0].text;
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Failed to parse written content from Claude');
+
+  const content = JSON.parse(jsonMatch[0]);
+  if (!content.title || !Array.isArray(content.sections)) {
+    throw new Error('Invalid content structure');
+  }
+
+  return content;
+}
+
+module.exports = { generatePresentationContent, parsePageContent, generateWrittenContent };

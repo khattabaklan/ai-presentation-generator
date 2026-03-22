@@ -69,9 +69,10 @@ const api = {
   },
 
   // Generation
-  generate(assignmentText, slideCount, colorTheme, assignmentId) {
+  generate(assignmentText, slideCount, colorTheme, assignmentId, outputType) {
     const body = { assignmentText, slideCount, colorTheme };
     if (assignmentId) body.assignmentId = assignmentId;
+    if (outputType) body.outputType = outputType;
     return this.request('/generate', {
       method: 'POST',
       body,

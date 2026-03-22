@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.post('/', authMiddleware, generateLimiter, async (req, res) => {
   try {
-    let { assignmentText, slideCount = 10, colorTheme = 'professional', assignmentId } = req.body;
+    let { assignmentText, slideCount = 10, colorTheme = 'professional', assignmentId, outputType = 'auto' } = req.body;
 
     // If assignmentId provided, build rich context from deep-crawled data
     if (assignmentId) {
@@ -104,7 +104,7 @@ router.post('/', authMiddleware, generateLimiter, async (req, res) => {
     res.status(202).json({ generationId, status: 'processing' });
 
     // Process in background
-    processGeneration(generationId, req.userId, assignmentText, slides, colorTheme).catch(
+    processGeneration(generationId, req.userId, assignmentText, slides, colorTheme, outputType).catch(
       (err) => {
         console.error(`Generation ${generationId} failed:`, err);
         pool.query("UPDATE generations SET status = 'failed' WHERE id = $1", [generationId]);
@@ -116,15 +116,28 @@ router.post('/', authMiddleware, generateLimiter, async (req, res) => {
   }
 });
 
-async function processGeneration(generationId, userId, assignmentText, slideCount, colorTheme) {
-  // Generate content with Claude
-  const content = await generatePresentationContent(assignmentText, slideCount, colorTheme);
+async function processGeneration(generationId, userId, assignmentText, slideCount, colorTheme, outputType = 'auto') {
+  const { generatePresentationContent, generateWrittenContent } = require('../services/claude');
 
-  // Build files
-  const [pptxBuffer, docxBuffer] = await Promise.all([
-    generatePptxBuffer(content, colorTheme),
-    generateDocxBuffer(content),
-  ]);
+  // Auto-detect output type if needed
+  if (outputType === 'auto') {
+    outputType = detectOutputType(assignmentText);
+  }
+
+  let pptxBuffer = null;
+  let docxBuffer = null;
+
+  if (outputType === 'slides') {
+    const content = await generatePresentationContent(assignmentText, slideCount, colorTheme);
+    [pptxBuffer, docxBuffer] = await Promise.all([
+      generatePptxBuffer(content, colorTheme),
+      generateDocxBuffer(content),
+    ]);
+  } else {
+    // Generate written content (essay, reflection, notes, outline)
+    const content = await generateWrittenContent(assignmentText, outputType);
+    docxBuffer = await generateWrittenDocx(content, outputType);
+  }
 
   // Store in DB
   await pool.query(
@@ -132,17 +145,79 @@ async function processGeneration(generationId, userId, assignmentText, slideCoun
     [pptxBuffer, docxBuffer, generationId]
   );
 
-  // Increment free generation counter if applicable
+  // Increment free generation counter
   await pool.query(
     "UPDATE users SET free_generations_used = free_generations_used + 1 WHERE id = $1 AND subscription_status = 'free'",
     [userId]
   );
 }
 
+function detectOutputType(text) {
+  const lower = text.toLowerCase();
+  if (lower.includes('presentation') || lower.includes('powerpoint') || lower.includes('slides')) return 'slides';
+  if (lower.includes('reflection') || lower.includes('journal') || lower.includes('personal experience')) return 'reflection';
+  if (lower.includes('essay') || lower.includes('paper') || lower.includes('write a') || lower.includes('word count') || lower.includes('apa') || lower.includes('mla')) return 'essay';
+  if (lower.includes('notes') || lower.includes('summary') || lower.includes('study guide') || lower.includes('review')) return 'notes';
+  if (lower.includes('outline') || lower.includes('plan') || lower.includes('draft')) return 'outline';
+  // Default to essay for most university assignments
+  return 'essay';
+}
+
+async function generateWrittenDocx(content, outputType) {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = require('docx');
+
+  const children = [];
+
+  // Title
+  children.push(new Paragraph({
+    text: content.title,
+    heading: HeadingLevel.TITLE,
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 400 },
+  }));
+
+  // Sections
+  for (const section of content.sections || []) {
+    children.push(new Paragraph({
+      text: section.heading,
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 300, after: 200 },
+    }));
+
+    // Split content into paragraphs
+    const paragraphs = section.content.split('\n').filter(p => p.trim());
+    for (const para of paragraphs) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: para.trim(), size: 24, font: 'Times New Roman' })],
+        spacing: { after: 200 },
+      }));
+    }
+  }
+
+  // References if present
+  if (content.references && content.references.length > 0) {
+    children.push(new Paragraph({
+      text: 'References',
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 400, after: 200 },
+    }));
+    for (const ref of content.references) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: ref, size: 24, font: 'Times New Roman' })],
+        spacing: { after: 100 },
+        indent: { hanging: 720 },
+      }));
+    }
+  }
+
+  const doc = new Document({ sections: [{ children }] });
+  return Buffer.from(await Packer.toBuffer(doc));
+}
+
 router.get('/:id/status', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, status, slide_count, color_theme, created_at FROM generations WHERE id = $1 AND user_id = $2',
+      'SELECT id, status, slide_count, color_theme, created_at, pptx_data IS NOT NULL as has_pptx, docx_data IS NOT NULL as has_docx FROM generations WHERE id = $1 AND user_id = $2',
       [req.params.id, req.userId]
     );
 
@@ -150,7 +225,11 @@ router.get('/:id/status', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Generation not found' });
     }
 
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    res.json({
+      ...row,
+      output_type: row.has_pptx ? 'slides' : 'written',
+    });
   } catch (err) {
     console.error('Status check error:', err);
     res.status(500).json({ error: 'Internal server error' });

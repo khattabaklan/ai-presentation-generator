@@ -12,15 +12,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const pptxBtn = document.getElementById('download-pptx');
   const docxBtn = document.getElementById('download-docx');
   const newGenBtn = document.getElementById('new-generation');
+  const outputTypeSelect = document.getElementById('output-type');
+  const slideOptions = document.getElementById('slide-options');
 
-  // Pre-fill from tracker if assignment data was passed
+  // Show/hide slide count based on output type
+  outputTypeSelect.addEventListener('change', () => {
+    slideOptions.style.display = outputTypeSelect.value === 'slides' ? '' : 'none';
+  });
+
+  // Pre-fill from tracker
   let prefillAssignmentId = localStorage.getItem('prefill_assignment_id');
   const prefill = localStorage.getItem('prefill_assignment');
   if (prefill) {
     const textarea = document.getElementById('assignment-text');
     if (prefillAssignmentId) {
       textarea.value = `[Using deep-crawled content for: ${prefill}]\nAdd any extra notes here, or just click Generate.`;
-      textarea.placeholder = 'Full assignment instructions, rubric, and course context will be pulled automatically from your synced data.';
+      textarea.placeholder = 'Full assignment instructions, rubric, and course context will be pulled automatically.';
+      // Auto-detect will work best with deep content
+      outputTypeSelect.value = 'auto';
+      slideOptions.style.display = 'none';
     } else {
       textarea.value = prefill;
     }
@@ -33,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     errorAlert.classList.add('hidden');
 
     const assignmentText = document.getElementById('assignment-text').value.trim();
+    const outputType = outputTypeSelect.value;
     const slideCount = document.getElementById('slide-count').value;
     const colorTheme = document.getElementById('color-theme').value;
 
@@ -41,13 +52,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Show progress
     formSection.classList.add('hidden');
     progressSection.style.display = 'block';
-    progressText.textContent = 'Starting generation...';
+    progressText.textContent = 'Analyzing your assignment...';
 
     try {
-      const { generationId } = await api.generate(assignmentText, slideCount, colorTheme, prefillAssignmentId || null);
+      const { generationId } = await api.generate(assignmentText, slideCount, colorTheme, prefillAssignmentId || null, outputType);
       await pollStatus(generationId);
     } catch (err) {
       formSection.classList.remove('hidden');
@@ -64,9 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
   async function pollStatus(id) {
     const messages = [
       'Analyzing your assignment...',
-      'Generating slide content with AI...',
-      'Building your presentation...',
-      'Creating speaker script...',
+      'Generating content with AI...',
+      'Building your document...',
+      'Formatting and polishing...',
       'Almost done...',
     ];
     let msgIndex = 0;
@@ -84,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (status.status === 'completed') {
           clearInterval(interval);
-          showDownloads(id);
+          showDownloads(id, status.output_type || 'slides');
           return;
         }
 
@@ -106,14 +116,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function showDownloads(id) {
+  function showDownloads(id, outputType) {
     progressSection.style.display = 'none';
     downloadSection.style.display = 'block';
 
     const token = api.getToken();
 
-    pptxBtn.onclick = () => downloadFile(id, 'pptx', token);
-    docxBtn.onclick = () => downloadFile(id, 'docx', token);
+    // Show relevant download buttons based on output type
+    if (outputType === 'slides') {
+      pptxBtn.classList.remove('hidden');
+      pptxBtn.textContent = 'Download PowerPoint (.pptx)';
+      pptxBtn.onclick = () => downloadFile(id, 'pptx', token);
+      docxBtn.classList.remove('hidden');
+      docxBtn.textContent = 'Download Speaker Script (.docx)';
+      docxBtn.classList.replace('btn-primary', 'btn-outline');
+      docxBtn.onclick = () => downloadFile(id, 'docx', token);
+    } else {
+      // Written assignment — DOCX is the primary download
+      docxBtn.classList.remove('hidden');
+      docxBtn.textContent = 'Download Document (.docx)';
+      docxBtn.onclick = () => downloadFile(id, 'docx', token);
+      pptxBtn.classList.add('hidden');
+    }
   }
 
   async function downloadFile(id, type, token) {
@@ -130,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `presentation.${type}`;
+    a.download = `assignment.${type}`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -138,8 +162,11 @@ document.addEventListener('DOMContentLoaded', () => {
   newGenBtn.addEventListener('click', () => {
     downloadSection.style.display = 'none';
     formSection.classList.remove('hidden');
+    pptxBtn.classList.add('hidden');
+    docxBtn.classList.add('hidden');
     form.reset();
     prefillAssignmentId = null;
+    slideOptions.style.display = '';
   });
 
   function showError(msg) {
