@@ -1,7 +1,7 @@
 // Tracker page logic — requires api.js and auth.js
 
 document.addEventListener('DOMContentLoaded', async () => {
-  if (!auth.requireAuth()) return;
+  // Login not required - tracker is accessible to everyone
 
   const setupSection = document.getElementById('setup-section');
   const dashboardSection = document.getElementById('dashboard-section');
