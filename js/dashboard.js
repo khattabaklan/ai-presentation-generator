@@ -1,28 +1,19 @@
 // Dashboard page logic — requires api.js and auth.js
 
 document.addEventListener('DOMContentLoaded', async () => {
-  if (!auth.requireAuth()) return;
-
   const userInfo = document.getElementById('user-info');
   const statsRow = document.getElementById('stats-row');
   const historyBody = document.getElementById('history-body');
   const emptyState = document.getElementById('empty-state');
 
   try {
-    const [{ user }, { generations }] = await Promise.all([api.getMe(), api.getHistory()]);
-
-    // Update stored user
-    api.setUser(user);
+    const { generations } = await api.getHistory();
 
     // User info
-    userInfo.textContent = user.email;
+    userInfo.textContent = 'Guest';
 
     // Stats
     const completed = generations.filter((g) => g.status === 'completed').length;
-    const statusText =
-      user.subscription_status === 'active'
-        ? 'Pro'
-        : `Free (${user.free_generations_used}/1 used)`;
 
     statsRow.innerHTML = `
       <div class="card stat-card">
@@ -34,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="label">Completed</div>
       </div>
       <div class="card stat-card">
-        <div class="value">${statusText}</div>
+        <div class="value">Free</div>
         <div class="label">Plan</div>
       </div>
     `;
@@ -67,9 +58,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } catch (err) {
     console.error('Dashboard load error:', err);
-    if (err.status === 401) {
-      auth.logout();
-    }
   }
 });
 
