@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Academic Assistant - Brightspace Sync",
-  "version": "1.0.0",
-  "description": "Sync your Brightspace assignments to Academic Assistant",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "name": "Academic Assistant - Brightspace Deep Sync",
+  "version": "2.0.0",
+  "description": "Deeply scans your Brightspace courses, assignments, quizzes, and materials for Academic Assistant",
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
   "host_permissions": ["*://*.brightspace.com/*", "*://*/*.d2l/*", "*://*/d2l/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

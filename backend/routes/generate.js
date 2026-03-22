@@ -10,14 +10,71 @@ const router = express.Router();
 
 router.post('/', authMiddleware, generateLimiter, async (req, res) => {
   try {
-    const { assignmentText, slideCount = 10, colorTheme = 'professional' } = req.body;
+    let { assignmentText, slideCount = 10, colorTheme = 'professional', assignmentId } = req.body;
+
+    // If assignmentId provided, build rich context from deep-crawled data
+    if (assignmentId) {
+      const aResult = await pool.query(
+        `SELECT a.title, a.full_instructions, a.rubric_text, a.requirements, a.attachment_names,
+                a.points_possible, a.due_date, a.assignment_type,
+                c.course_name, c.course_code
+         FROM tracked_assignments a
+         JOIN tracked_courses c ON a.course_id = c.id
+         WHERE a.id = $1 AND a.user_id = $2`,
+        [assignmentId, req.userId]
+      );
+
+      if (aResult.rows.length > 0) {
+        const a = aResult.rows[0];
+        const parts = [];
+
+        parts.push(`COURSE: ${a.course_name}${a.course_code ? ` (${a.course_code})` : ''}`);
+        parts.push(`ASSIGNMENT: ${a.title}`);
+        if (a.points_possible) parts.push(`POINTS: ${a.points_possible}`);
+        if (a.due_date) parts.push(`DUE: ${new Date(a.due_date).toLocaleDateString()}`);
+
+        if (a.full_instructions) {
+          parts.push(`\nFULL INSTRUCTIONS:\n${a.full_instructions}`);
+        }
+
+        if (a.rubric_text) {
+          parts.push(`\nRUBRIC/GRADING CRITERIA:\n${a.rubric_text}`);
+        }
+
+        if (a.requirements) {
+          try {
+            const reqs = JSON.parse(a.requirements);
+            if (Array.isArray(reqs) && reqs.length > 0) {
+              parts.push(`\nKEY REQUIREMENTS:\n${reqs.map(r => `- ${r}`).join('\n')}`);
+            }
+          } catch (e) { /* ignore parse errors */ }
+        }
+
+        if (a.attachment_names) {
+          try {
+            const files = JSON.parse(a.attachment_names);
+            if (Array.isArray(files) && files.length > 0) {
+              parts.push(`\nATTACHMENTS: ${files.join(', ')}`);
+            }
+          } catch (e) { /* ignore parse errors */ }
+        }
+
+        // Use rich context, but keep user text as additional notes if provided
+        const richContext = parts.join('\n');
+        assignmentText = assignmentText
+          ? `${richContext}\n\nADDITIONAL NOTES FROM STUDENT:\n${assignmentText}`
+          : richContext;
+      }
+    }
 
     if (!assignmentText || assignmentText.trim().length === 0) {
       return res.status(400).json({ error: 'Assignment text is required' });
     }
 
-    if (assignmentText.length > 10000) {
-      return res.status(400).json({ error: 'Assignment text must be under 10,000 characters' });
+    // Allow larger text when using deep content
+    const maxLen = assignmentId ? 50000 : 10000;
+    if (assignmentText.length > maxLen) {
+      assignmentText = assignmentText.substring(0, maxLen);
     }
 
     const slides = Math.min(Math.max(parseInt(slideCount) || 10, 5), 20);

@@ -1,8 +1,153 @@
 const express = require('express');
 const pool = require('../config/db');
 const authMiddleware = require('../middleware/auth');
+const { parsePageContent } = require('../services/claude');
 
 const router = express.Router();
+
+// ─── Parse Page with Claude (Deep Crawl) ────────────────────────────────────
+
+router.post('/parse-page', authMiddleware, async (req, res) => {
+  try {
+    const { text, pageType, courseId } = req.body;
+
+    if (!text || !pageType) {
+      return res.status(400).json({ error: 'text and pageType are required' });
+    }
+
+    // Cap input to avoid massive token usage
+    const truncated = text.substring(0, 100000);
+    const parsed = await parsePageContent(truncated, pageType, courseId);
+
+    res.json(parsed);
+  } catch (err) {
+    console.error('Parse page error:', err);
+    res.status(500).json({ error: 'Failed to parse page content' });
+  }
+});
+
+// ─── Deep Import (with full instructions, rubric, materials) ────────────────
+
+router.post('/deep-import', authMiddleware, async (req, res) => {
+  try {
+    const { courses, assignments, quizzes, materials } = req.body;
+
+    let coursesImported = 0;
+    let assignmentsImported = 0;
+    let materialsImported = 0;
+
+    // Upsert courses
+    if (courses && Array.isArray(courses)) {
+      for (const course of courses) {
+        await pool.query(
+          `INSERT INTO tracked_courses (user_id, platform, platform_course_id, course_name, course_code, course_url, last_crawled_at, deep_crawled_at)
+           VALUES ($1, 'brightspace', $2, $3, $4, $5, NOW(), NOW())
+           ON CONFLICT (user_id, platform_course_id) DO UPDATE SET
+             course_name = EXCLUDED.course_name,
+             course_code = EXCLUDED.course_code,
+             course_url = EXCLUDED.course_url,
+             last_crawled_at = NOW(),
+             deep_crawled_at = NOW(),
+             updated_at = NOW()`,
+          [req.userId, course.courseId, course.name, course.code, course.url]
+        );
+        coursesImported++;
+      }
+    }
+
+    // Upsert assignments with deep content
+    if (assignments && Array.isArray(assignments)) {
+      for (const a of assignments) {
+        const courseResult = await pool.query(
+          'SELECT id FROM tracked_courses WHERE user_id = $1 AND platform_course_id = $2',
+          [req.userId, a.courseId]
+        );
+        if (courseResult.rows.length === 0) continue;
+        const dbCourseId = courseResult.rows[0].id;
+
+        await pool.query(
+          `INSERT INTO tracked_assignments (course_id, user_id, platform_assignment_id, title, due_date, points_possible, submission_status, assignment_type, assignment_url, full_instructions, rubric_text, requirements, attachment_names, deep_crawled_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+           ON CONFLICT (course_id, platform_assignment_id) DO UPDATE SET
+             title = EXCLUDED.title,
+             due_date = EXCLUDED.due_date,
+             points_possible = EXCLUDED.points_possible,
+             submission_status = EXCLUDED.submission_status,
+             assignment_type = EXCLUDED.assignment_type,
+             assignment_url = EXCLUDED.assignment_url,
+             full_instructions = COALESCE(EXCLUDED.full_instructions, tracked_assignments.full_instructions),
+             rubric_text = COALESCE(EXCLUDED.rubric_text, tracked_assignments.rubric_text),
+             requirements = COALESCE(EXCLUDED.requirements, tracked_assignments.requirements),
+             attachment_names = COALESCE(EXCLUDED.attachment_names, tracked_assignments.attachment_names),
+             deep_crawled_at = CASE WHEN EXCLUDED.full_instructions IS NOT NULL THEN NOW() ELSE tracked_assignments.deep_crawled_at END,
+             updated_at = NOW()`,
+          [
+            dbCourseId, req.userId, a.assignmentId, a.title,
+            a.dueDate, a.points, a.status, a.assignmentType || 'dropbox', a.assignmentUrl,
+            a.fullInstructions, a.rubric,
+            a.requirements ? JSON.stringify(a.requirements) : null,
+            a.attachments ? JSON.stringify(a.attachments) : null,
+          ]
+        );
+        assignmentsImported++;
+      }
+    }
+
+    // Upsert quizzes as assignments with type 'quiz'
+    if (quizzes && Array.isArray(quizzes)) {
+      for (const q of quizzes) {
+        const courseResult = await pool.query(
+          'SELECT id FROM tracked_courses WHERE user_id = $1 AND platform_course_id = $2',
+          [req.userId, q.courseId]
+        );
+        if (courseResult.rows.length === 0) continue;
+        const dbCourseId = courseResult.rows[0].id;
+
+        await pool.query(
+          `INSERT INTO tracked_assignments (course_id, user_id, platform_assignment_id, title, due_date, submission_status, assignment_type)
+           VALUES ($1, $2, $3, $4, $5, $6, 'quiz')
+           ON CONFLICT (course_id, platform_assignment_id) DO UPDATE SET
+             title = EXCLUDED.title,
+             due_date = EXCLUDED.due_date,
+             submission_status = EXCLUDED.submission_status,
+             updated_at = NOW()`,
+          [dbCourseId, req.userId, q.quizId || `quiz_${q.title}`, q.title, q.dueDate, q.status || 'not_submitted']
+        );
+        assignmentsImported++;
+      }
+    }
+
+    // Insert course materials
+    if (materials && Array.isArray(materials)) {
+      for (const m of materials) {
+        const courseResult = await pool.query(
+          'SELECT id FROM tracked_courses WHERE user_id = $1 AND platform_course_id = $2',
+          [req.userId, m.courseId]
+        );
+        if (courseResult.rows.length === 0) continue;
+        const dbCourseId = courseResult.rows[0].id;
+
+        // Clear old materials for this course, then insert fresh
+        if (m.topics && Array.isArray(m.topics)) {
+          for (let i = 0; i < m.topics.length; i++) {
+            const t = m.topics[i];
+            await pool.query(
+              `INSERT INTO tracked_course_materials (course_id, user_id, module_name, topic_title, topic_type, sort_order)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [dbCourseId, req.userId, m.moduleName, t.title, t.type, i]
+            );
+            materialsImported++;
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, coursesImported, assignmentsImported, materialsImported });
+  } catch (err) {
+    console.error('Deep import error:', err);
+    res.status(500).json({ error: 'Failed to import deep crawl data' });
+  }
+});
 
 // ─── Import from Chrome Extension ───────────────────────────────────────────
 
@@ -129,6 +274,7 @@ router.get('/assignments', authMiddleware, async (req, res) => {
       `SELECT
         a.id, a.title, a.description, a.due_date, a.points_possible,
         a.submission_status, a.grade, a.assignment_type, a.assignment_url,
+        a.full_instructions, a.rubric_text, a.requirements, a.attachment_names,
         a.updated_at,
         c.course_name, c.course_code, c.platform_course_id
        FROM tracked_assignments a
@@ -165,6 +311,10 @@ router.get('/assignments', authMiddleware, async (req, res) => {
         grade: row.grade,
         assignmentType: row.assignment_type,
         assignmentUrl: row.assignment_url,
+        fullInstructions: row.full_instructions,
+        rubricText: row.rubric_text,
+        requirements: row.requirements,
+        attachmentNames: row.attachment_names,
         updatedAt: row.updated_at,
         courseName: row.course_name,
         courseCode: row.course_code,
