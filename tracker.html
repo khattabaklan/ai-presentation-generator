@@ -17,35 +17,39 @@
 
   <div class="container tracker-page">
 
-    <!-- Setup Section — shown when no LMS credentials exist -->
+    <!-- Setup Section — shown when no synced data exists -->
     <div id="setup-section" class="hidden">
       <div class="setup-card card">
-        <h1>Connect Your LMS</h1>
-        <p class="subtitle">Link your Brightspace account to automatically track all your assignments, due dates, and grades across every course.</p>
+        <h1>Sync Your Assignments</h1>
+        <p class="subtitle">Use the Chrome extension to automatically pull assignments from Brightspace — no passwords stored, no credentials shared.</p>
 
-        <div id="setup-error" class="alert alert-error hidden"></div>
+        <div class="setup-steps">
+          <div class="setup-step">
+            <div class="step-number">1</div>
+            <div>
+              <strong>Install the Chrome Extension</strong>
+              <p>Open <code>chrome://extensions</code>, enable Developer Mode, click "Load unpacked" and select the <code>chrome-extension</code> folder from the project.</p>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-number">2</div>
+            <div>
+              <strong>Log in to Brightspace</strong>
+              <p>Open your university's Brightspace and log in normally. The extension uses your existing session — nothing is stored.</p>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-number">3</div>
+            <div>
+              <strong>Click "Sync Assignments"</strong>
+              <p>Click the extension icon and hit Sync. It scans your courses, reads assignments and due dates, and sends them here.</p>
+            </div>
+          </div>
+        </div>
 
-        <form id="credentials-form">
-          <div class="form-group">
-            <label for="lms-url">Brightspace URL</label>
-            <input type="url" id="lms-url" placeholder="https://brightspace.youruniversity.edu" required>
-            <small style="color: var(--text-secondary);">Your university's Brightspace login page URL</small>
-          </div>
-          <div class="form-group">
-            <label for="lms-username">Username</label>
-            <input type="text" id="lms-username" placeholder="Your university username" required autocomplete="username">
-          </div>
-          <div class="form-group">
-            <label for="lms-password">Password</label>
-            <input type="password" id="lms-password" placeholder="Your university password" required autocomplete="current-password">
-          </div>
-
-          <div class="alert alert-info">
-            Your credentials are encrypted with AES-256-GCM before storage. They are only decrypted during sync and never logged.
-          </div>
-
-          <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Connect & Start First Sync</button>
-        </form>
+        <div class="alert alert-info">
+          Your Brightspace credentials are never sent to our servers. The extension reads your assignments directly from your browser where you're already logged in.
+        </div>
       </div>
     </div>
 
@@ -127,7 +131,7 @@
       <!-- Empty State -->
       <div id="empty-assignments" class="card hidden" style="text-align: center; padding: 48px;">
         <p style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 16px;">No assignments found yet.</p>
-        <p style="color: var(--text-secondary);">Click "Sync Now" to pull assignments from Brightspace.</p>
+        <p style="color: var(--text-secondary);">Use the Chrome extension on your Brightspace page to sync assignments.</p>
       </div>
 
     </div>
@@ -135,11 +139,12 @@
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal-overlay hidden">
       <div class="modal-content card">
-        <h2>LMS Settings</h2>
+        <h2>Settings</h2>
         <div id="current-lms-info" style="margin: 16px 0; color: var(--text-secondary);"></div>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">To re-sync, open Brightspace and click the extension.</p>
         <div style="display: flex; gap: 12px; justify-content: flex-end;">
           <button class="btn btn-outline" id="close-settings">Close</button>
-          <button class="btn btn-accent" id="disconnect-lms">Disconnect LMS</button>
+          <button class="btn btn-accent" id="disconnect-lms">Clear All Data</button>
         </div>
       </div>
     </div>
