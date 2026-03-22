@@ -14,10 +14,20 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
-// CORS
+// CORS — allow frontend + any Brightspace domain (for Chrome extension)
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: function (origin, callback) {
+      // Allow requests with no origin (extensions, server-to-server)
+      if (!origin) return callback(null, true);
+      // Allow frontend
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      if (origin === frontendUrl || origin.startsWith('chrome-extension://')) {
+        return callback(null, true);
+      }
+      // Allow any origin for the import endpoint (auth via token)
+      callback(null, true);
+    },
     credentials: true,
   })
 );

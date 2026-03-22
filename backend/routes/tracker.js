@@ -1,224 +1,98 @@
 const express = require('express');
 const pool = require('../config/db');
 const authMiddleware = require('../middleware/auth');
-const { encrypt, decrypt } = require('../services/cryptoUtil');
-const { syncBrightspace } = require('../services/lmsCrawler');
 
 const router = express.Router();
 
-// ─── Save LMS Credentials ───────────────────────────────────────────────────
+// ─── Import from Chrome Extension ───────────────────────────────────────────
 
-router.post('/credentials', authMiddleware, async (req, res) => {
+router.post('/import', authMiddleware, async (req, res) => {
   try {
-    const { lmsUrl, username, password, platform = 'brightspace' } = req.body;
+    const { courses, assignments, lmsUrl } = req.body;
 
-    if (!lmsUrl || !username || !password) {
-      return res.status(400).json({ error: 'LMS URL, username, and password are required' });
+    if (!courses || !Array.isArray(courses) || courses.length === 0) {
+      return res.status(400).json({ error: 'No courses provided' });
     }
 
-    // Normalize URL — strip trailing slash
-    const normalizedUrl = lmsUrl.replace(/\/+$/, '');
+    let coursesImported = 0;
+    let assignmentsImported = 0;
 
-    // Encrypt credentials
-    const encUser = encrypt(username);
-    const encPass = encrypt(password);
+    // Upsert courses
+    for (const course of courses) {
+      await pool.query(
+        `INSERT INTO tracked_courses (user_id, platform, platform_course_id, course_name, course_code, course_url, last_crawled_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (user_id, platform_course_id) DO UPDATE SET
+           course_name = EXCLUDED.course_name,
+           course_code = EXCLUDED.course_code,
+           course_url = EXCLUDED.course_url,
+           last_crawled_at = NOW(),
+           updated_at = NOW()`,
+        [req.userId, 'brightspace', course.platformCourseId, course.name, course.courseCode, course.url]
+      );
+      coursesImported++;
+    }
 
-    await pool.query(
-      `INSERT INTO lms_credentials (user_id, platform, lms_url, encrypted_username, encrypted_password, encryption_iv, encryption_tag)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (user_id, platform) DO UPDATE SET
-         lms_url = EXCLUDED.lms_url,
-         encrypted_username = EXCLUDED.encrypted_username,
-         encrypted_password = EXCLUDED.encrypted_password,
-         encryption_iv = EXCLUDED.encryption_iv,
-         encryption_tag = EXCLUDED.encryption_tag,
-         updated_at = NOW()`,
-      [
-        req.userId,
-        platform,
-        normalizedUrl,
-        encUser.encrypted,
-        encPass.encrypted,
-        // Store both IVs and tags as JSON since we have two encrypted fields
-        JSON.stringify({ username: encUser.iv, password: encPass.iv }),
-        JSON.stringify({ username: encUser.tag, password: encPass.tag }),
-      ]
-    );
+    // Upsert assignments
+    for (const assignment of assignments) {
+      // Look up internal course ID
+      const courseResult = await pool.query(
+        'SELECT id FROM tracked_courses WHERE user_id = $1 AND platform_course_id = $2',
+        [req.userId, assignment.courseId]
+      );
 
-    res.json({ success: true, message: 'Credentials saved securely' });
+      if (courseResult.rows.length === 0) continue;
+      const dbCourseId = courseResult.rows[0].id;
+
+      await pool.query(
+        `INSERT INTO tracked_assignments (course_id, user_id, platform_assignment_id, title, due_date, points_possible, submission_status, assignment_type, assignment_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (course_id, platform_assignment_id) DO UPDATE SET
+           title = EXCLUDED.title,
+           due_date = EXCLUDED.due_date,
+           points_possible = EXCLUDED.points_possible,
+           submission_status = EXCLUDED.submission_status,
+           assignment_type = EXCLUDED.assignment_type,
+           assignment_url = EXCLUDED.assignment_url,
+           updated_at = NOW()`,
+        [
+          dbCourseId, req.userId, assignment.platformAssignmentId, assignment.title,
+          assignment.dueDate, assignment.pointsPossible, assignment.submissionStatus,
+          assignment.assignmentType, assignment.assignmentUrl,
+        ]
+      );
+      assignmentsImported++;
+    }
+
+    res.json({ success: true, coursesImported, assignmentsImported });
   } catch (err) {
-    console.error('Save credentials error:', err);
-    res.status(500).json({ error: 'Failed to save credentials' });
+    console.error('Import error:', err);
+    res.status(500).json({ error: 'Failed to import assignments' });
   }
 });
 
-// ─── Check if credentials exist ─────────────────────────────────────────────
+// ─── Check if credentials exist (legacy — now checks for any tracked data) ──
 
 router.get('/credentials', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, platform, lms_url, last_sync_at, created_at FROM lms_credentials WHERE user_id = $1',
+      'SELECT COUNT(*) as count FROM tracked_courses WHERE user_id = $1',
       [req.userId]
     );
+
+    const hasData = parseInt(result.rows[0].count) > 0;
 
     res.json({
-      hasCredentials: result.rows.length > 0,
-      credentials: result.rows.map((r) => ({
-        id: r.id,
-        platform: r.platform,
-        lmsUrl: r.lms_url,
-        lastSyncAt: r.last_sync_at,
-        createdAt: r.created_at,
-      })),
+      hasCredentials: hasData,
+      credentials: hasData ? [{ lmsUrl: 'Synced via extension', lastSyncAt: new Date() }] : [],
     });
   } catch (err) {
-    console.error('Check credentials error:', err);
-    res.status(500).json({ error: 'Failed to check credentials' });
+    console.error('Check data error:', err);
+    res.status(500).json({ error: 'Failed to check data' });
   }
 });
 
-// ─── Delete credentials ─────────────────────────────────────────────────────
-
-router.delete('/credentials', authMiddleware, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM lms_credentials WHERE user_id = $1', [req.userId]);
-    res.json({ success: true, message: 'Credentials removed' });
-  } catch (err) {
-    console.error('Delete credentials error:', err);
-    res.status(500).json({ error: 'Failed to delete credentials' });
-  }
-});
-
-// ─── Trigger a sync ─────────────────────────────────────────────────────────
-
-router.post('/sync', authMiddleware, async (req, res) => {
-  try {
-    // Check for existing credentials
-    const credResult = await pool.query(
-      'SELECT * FROM lms_credentials WHERE user_id = $1 AND platform = $2',
-      [req.userId, req.body.platform || 'brightspace']
-    );
-
-    if (credResult.rows.length === 0) {
-      return res.status(400).json({ error: 'No LMS credentials found. Please save your credentials first.' });
-    }
-
-    // Check for already-running sync
-    const runningSync = await pool.query(
-      "SELECT id FROM sync_jobs WHERE user_id = $1 AND status IN ('pending', 'running') LIMIT 1",
-      [req.userId]
-    );
-
-    if (runningSync.rows.length > 0) {
-      return res.status(409).json({
-        error: 'A sync is already in progress',
-        syncId: runningSync.rows[0].id,
-      });
-    }
-
-    // Create sync job
-    const jobResult = await pool.query(
-      "INSERT INTO sync_jobs (user_id, status) VALUES ($1, 'pending') RETURNING id",
-      [req.userId]
-    );
-    const syncId = jobResult.rows[0].id;
-
-    // Return immediately
-    res.status(202).json({ syncId, status: 'pending' });
-
-    // Run sync in background
-    runSync(syncId, req.userId, credResult.rows[0]).catch((err) => {
-      console.error(`Sync ${syncId} failed:`, err);
-      pool.query(
-        "UPDATE sync_jobs SET status = 'failed', error_message = $1, completed_at = NOW() WHERE id = $2",
-        [err.message, syncId]
-      );
-    });
-  } catch (err) {
-    console.error('Sync trigger error:', err);
-    res.status(500).json({ error: 'Failed to start sync' });
-  }
-});
-
-async function runSync(syncId, userId, credentials) {
-  await pool.query(
-    "UPDATE sync_jobs SET status = 'running', started_at = NOW() WHERE id = $1",
-    [syncId]
-  );
-
-  // Decrypt credentials
-  const ivs = JSON.parse(credentials.encryption_iv);
-  const tags = JSON.parse(credentials.encryption_tag);
-
-  const username = decrypt(credentials.encrypted_username, ivs.username, tags.username);
-  const password = decrypt(credentials.encrypted_password, ivs.password, tags.password);
-
-  // Run the crawler
-  const { courses, assignments } = await syncBrightspace(
-    credentials.lms_url,
-    username,
-    password
-  );
-
-  // Upsert courses
-  for (const course of courses) {
-    await pool.query(
-      `INSERT INTO tracked_courses (user_id, platform, platform_course_id, course_name, course_code, course_url, last_crawled_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (user_id, platform_course_id) DO UPDATE SET
-         course_name = EXCLUDED.course_name,
-         course_code = EXCLUDED.course_code,
-         course_url = EXCLUDED.course_url,
-         last_crawled_at = NOW(),
-         updated_at = NOW()`,
-      [userId, 'brightspace', course.platformCourseId, course.name, course.courseCode, course.url]
-    );
-  }
-
-  // Upsert assignments
-  for (const assignment of assignments) {
-    // Look up internal course ID
-    const courseResult = await pool.query(
-      'SELECT id FROM tracked_courses WHERE user_id = $1 AND platform_course_id = $2',
-      [userId, assignment.courseId]
-    );
-
-    if (courseResult.rows.length === 0) continue;
-    const dbCourseId = courseResult.rows[0].id;
-
-    await pool.query(
-      `INSERT INTO tracked_assignments (course_id, user_id, platform_assignment_id, title, due_date, points_possible, submission_status, assignment_type, assignment_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (course_id, platform_assignment_id) DO UPDATE SET
-         title = EXCLUDED.title,
-         due_date = EXCLUDED.due_date,
-         points_possible = EXCLUDED.points_possible,
-         submission_status = EXCLUDED.submission_status,
-         assignment_type = EXCLUDED.assignment_type,
-         assignment_url = EXCLUDED.assignment_url,
-         updated_at = NOW()`,
-      [
-        dbCourseId, userId, assignment.platformAssignmentId, assignment.title,
-        assignment.dueDate, assignment.pointsPossible, assignment.submissionStatus,
-        assignment.assignmentType, assignment.assignmentUrl,
-      ]
-    );
-  }
-
-  // Update sync job
-  await pool.query(
-    "UPDATE sync_jobs SET status = 'completed', courses_found = $1, assignments_found = $2, completed_at = NOW() WHERE id = $3",
-    [courses.length, assignments.length, syncId]
-  );
-
-  // Update last_sync_at on credentials
-  await pool.query(
-    'UPDATE lms_credentials SET last_sync_at = NOW() WHERE user_id = $1',
-    [userId]
-  );
-}
-
-// ─── Get sync status ────────────────────────────────────────────────────────
+// ─── Get sync status (kept for backwards compat) ────────────────────────────
 
 router.get('/sync/:id', authMiddleware, async (req, res) => {
   try {
@@ -345,7 +219,7 @@ router.get('/summary', authMiddleware, async (req, res) => {
     const now = new Date();
     const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    const [assignmentStats, courseCount, lastSync] = await Promise.all([
+    const [assignmentStats, courseCount] = await Promise.all([
       pool.query(
         `SELECT
           COUNT(*) as total,
@@ -356,10 +230,6 @@ router.get('/summary', authMiddleware, async (req, res) => {
         [req.userId, weekFromNow]
       ),
       pool.query('SELECT COUNT(*) as count FROM tracked_courses WHERE user_id = $1', [req.userId]),
-      pool.query(
-        'SELECT last_sync_at FROM lms_credentials WHERE user_id = $1 ORDER BY last_sync_at DESC LIMIT 1',
-        [req.userId]
-      ),
     ]);
 
     const stats = assignmentStats.rows[0];
@@ -369,7 +239,7 @@ router.get('/summary', authMiddleware, async (req, res) => {
       overdueAssignments: parseInt(stats.overdue),
       dueThisWeek: parseInt(stats.due_this_week),
       totalCourses: parseInt(courseCount.rows[0].count),
-      lastSyncAt: lastSync.rows[0]?.last_sync_at || null,
+      lastSyncAt: null,
     });
   } catch (err) {
     console.error('Summary error:', err);

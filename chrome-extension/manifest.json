@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Academic Assistant - Brightspace Sync",
+  "version": "1.0.0",
+  "description": "Sync your Brightspace assignments to Academic Assistant",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["*://*.brightspace.com/*", "*://*/*.d2l/*", "*://*/d2l/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
