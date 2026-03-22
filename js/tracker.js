@@ -194,10 +194,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Attach "Generate Presentation" button handlers
     container.querySelectorAll('.gen-pres-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        const assignmentId = btn.dataset.assignmentId;
         const title = btn.dataset.title;
-        const desc = btn.dataset.description || '';
-        const text = desc || title;
-        localStorage.setItem('prefill_assignment', text);
+        // Pass assignment ID for deep content, title as fallback
+        if (assignmentId) {
+          localStorage.setItem('prefill_assignment_id', assignmentId);
+          localStorage.setItem('prefill_assignment', title);
+        } else {
+          localStorage.setItem('prefill_assignment', btn.dataset.description || title);
+        }
         window.location.href = 'app.html';
       });
     });
@@ -213,10 +218,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       ? `<a href="${escapeHtml(a.assignmentUrl)}" target="_blank" rel="noopener">${escapeHtml(a.title)}</a>`
       : escapeHtml(a.title);
 
+    const hasDeepContent = a.fullInstructions || a.rubricText;
+    const deepBadge = hasDeepContent
+      ? '<span class="status-badge" style="background: rgba(99,102,241,0.15); color: #a5b4fc; font-size: 10px;">Deep Content</span>'
+      : '';
+
     return `
       <div class="assignment-card urgency-${a.urgency}">
         <div class="assignment-info">
-          <div class="assignment-title">${titleHtml}</div>
+          <div class="assignment-title">${titleHtml} ${deepBadge}</div>
           <div class="assignment-meta">
             ${dueBadge}
             ${pointsText ? `<span>${pointsText}</span>` : ''}
@@ -225,7 +235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
         </div>
         <div class="assignment-actions">
-          <button class="btn btn-primary gen-pres-btn" data-title="${escapeAttr(a.title)}" data-description="${escapeAttr(a.description || '')}">
+          <button class="btn btn-primary gen-pres-btn" data-title="${escapeAttr(a.title)}" data-description="${escapeAttr(a.description || '')}" data-assignment-id="${a.id}">
             Generate Slides
           </button>
         </div>

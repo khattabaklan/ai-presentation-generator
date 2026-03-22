@@ -14,10 +14,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const newGenBtn = document.getElementById('new-generation');
 
   // Pre-fill from tracker if assignment data was passed
+  let prefillAssignmentId = localStorage.getItem('prefill_assignment_id');
   const prefill = localStorage.getItem('prefill_assignment');
   if (prefill) {
-    document.getElementById('assignment-text').value = prefill;
+    const textarea = document.getElementById('assignment-text');
+    if (prefillAssignmentId) {
+      textarea.value = `[Using deep-crawled content for: ${prefill}]\nAdd any extra notes here, or just click Generate.`;
+      textarea.placeholder = 'Full assignment instructions, rubric, and course context will be pulled automatically from your synced data.';
+    } else {
+      textarea.value = prefill;
+    }
     localStorage.removeItem('prefill_assignment');
+    localStorage.removeItem('prefill_assignment_id');
   }
 
   form.addEventListener('submit', async (e) => {
@@ -39,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     progressText.textContent = 'Starting generation...';
 
     try {
-      const { generationId } = await api.generate(assignmentText, slideCount, colorTheme);
+      const { generationId } = await api.generate(assignmentText, slideCount, colorTheme, prefillAssignmentId || null);
       await pollStatus(generationId);
     } catch (err) {
       formSection.classList.remove('hidden');
@@ -131,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadSection.style.display = 'none';
     formSection.classList.remove('hidden');
     form.reset();
+    prefillAssignmentId = null;
   });
 
   function showError(msg) {
