@@ -1,54 +1,33 @@
-// Auth utilities — requires api.js to be loaded first
+// Auth utilities — login removed for now
 
 const auth = {
   isLoggedIn() {
-    return !!api.getToken();
+    return true;
   },
 
   logout() {
-    api.clearToken();
-    window.location.href = 'index.html';
+    // No-op — login disabled
   },
 
   requireAuth() {
-    if (!this.isLoggedIn()) {
-      window.location.href = 'login.html';
-      return false;
-    }
     return true;
   },
 
   redirectIfLoggedIn() {
-    if (this.isLoggedIn()) {
-      window.location.href = 'app.html';
-    }
+    // No-op — login disabled
   },
 
   updateNavbar() {
     const navLinks = document.getElementById('nav-links');
     if (!navLinks) return;
 
-    if (this.isLoggedIn()) {
-      const user = api.getUser();
-      navLinks.innerHTML = `
-        <li><a href="app.html">Generator</a></li>
-        <li><a href="tracker.html">Tracker</a></li>
-        <li><a href="dashboard.html">Dashboard</a></li>
-        <li><a href="pricing.html">Pricing</a></li>
-        <li><a href="#" id="logout-link">Logout</a></li>
-      `;
-      document.getElementById('logout-link').addEventListener('click', (e) => {
-        e.preventDefault();
-        this.logout();
-      });
-    } else {
-      navLinks.innerHTML = `
-        <li><a href="index.html">Home</a></li>
-        <li><a href="pricing.html">Pricing</a></li>
-        <li><a href="login.html">Login</a></li>
-        <li><a href="signup.html" class="btn btn-primary" style="padding: 8px 20px;">Sign Up</a></li>
-      `;
-    }
+    navLinks.innerHTML = `
+      <li><a href="index.html">Home</a></li>
+      <li><a href="app.html">Generator</a></li>
+      <li><a href="tracker.html">Tracker</a></li>
+      <li><a href="dashboard.html">Dashboard</a></li>
+      <li><a href="pricing.html">Pricing</a></li>
+    `;
   },
 };
 

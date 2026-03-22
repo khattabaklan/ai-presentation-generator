@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } catch (err) {
     console.error('Tracker init error:', err);
-    if (err.status === 401) auth.logout();
+    // Auth disabled — no logout on 401
     showSetup();
   }
 

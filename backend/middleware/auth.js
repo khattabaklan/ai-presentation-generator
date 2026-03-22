@@ -1,9 +1,14 @@
 const jwt = require('jsonwebtoken');
 
+const GUEST_USER_ID = 1; // Default guest user — login disabled for now
+
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
+
   if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid authorization header' });
+    // No token — use guest user
+    req.userId = GUEST_USER_ID;
+    return next();
   }
 
   const token = header.slice(7);
@@ -12,7 +17,9 @@ function authMiddleware(req, res, next) {
     req.userId = payload.userId;
     next();
   } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    // Invalid token — fall back to guest
+    req.userId = GUEST_USER_ID;
+    next();
   }
 }
 
