@@ -236,7 +236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         <div class="assignment-actions">
           <button class="btn btn-primary gen-pres-btn" data-title="${escapeAttr(a.title)}" data-description="${escapeAttr(a.description || '')}" data-assignment-id="${a.id}">
-            Generate Slides
+            AI Help
           </button>
         </div>
       </div>

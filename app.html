@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Generate Presentation — AI Presentation Generator</title>
+  <title>AI Assignment Helper — Academic Command Center</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -15,7 +15,7 @@
   </nav>
 
   <div class="container generator-page">
-    <h1>Generate a Presentation</h1>
+    <h1>AI Assignment Helper</h1>
 
     <div id="error-alert" class="alert alert-error hidden"></div>
 
@@ -24,11 +24,22 @@
       <form id="generator-form" class="generator-form">
         <div class="form-group">
           <label for="assignment-text">Assignment Instructions</label>
-          <textarea id="assignment-text" rows="8" placeholder="Paste your assignment instructions, topic description, or requirements here...&#10;&#10;Example: Create a presentation about the impact of artificial intelligence on healthcare. Cover current applications, challenges, ethical considerations, and future directions. Target audience is undergraduate students." required></textarea>
+          <textarea id="assignment-text" rows="8" placeholder="Paste your assignment instructions, topic description, or requirements here...&#10;&#10;Or click 'AI Help' from the Tracker page to auto-fill from your synced assignments." required></textarea>
         </div>
 
         <div class="options-row">
           <div class="form-group">
+            <label for="output-type">What do you need?</label>
+            <select id="output-type">
+              <option value="auto">Auto-detect from instructions</option>
+              <option value="essay">Essay / Written Paper</option>
+              <option value="slides">Presentation Slides</option>
+              <option value="reflection">Reflection / Journal</option>
+              <option value="notes">Study Notes / Summary</option>
+              <option value="outline">Assignment Outline</option>
+            </select>
+          </div>
+          <div class="form-group" id="slide-options">
             <label for="slide-count">Number of Slides</label>
             <select id="slide-count">
               <option value="5">5 slides</option>
@@ -51,7 +62,7 @@
           </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-lg">Generate Presentation</button>
+        <button type="submit" class="btn btn-primary btn-lg">Generate</button>
       </form>
     </div>
 
@@ -64,11 +75,11 @@
 
     <!-- Download Section -->
     <div id="download-section" class="download-section card">
-      <h2>Your Presentation is Ready!</h2>
+      <h2>Your Assignment is Ready!</h2>
       <p>Download your files below.</p>
       <div class="download-buttons">
-        <button class="btn btn-primary btn-lg" id="download-pptx">Download PowerPoint (.pptx)</button>
-        <button class="btn btn-outline btn-lg" id="download-docx">Download Speaker Script (.docx)</button>
+        <button class="btn btn-primary btn-lg hidden" id="download-pptx">Download PowerPoint (.pptx)</button>
+        <button class="btn btn-primary btn-lg hidden" id="download-docx">Download Document (.docx)</button>
       </div>
       <button class="btn btn-outline mt-4" id="new-generation">Generate Another</button>
     </div>
@@ -76,7 +87,7 @@
 
   <footer class="footer">
     <div class="container">
-      <p>AI Presentation Generator &copy; 2026. Powered by Claude AI.</p>
+      <p>Academic Command Center &copy; 2026. Powered by Claude AI.</p>
     </div>
   </footer>
 
