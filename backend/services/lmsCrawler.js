@@ -1,17 +1,30 @@
 const { chromium } = require('playwright');
+const { parsePageContent } = require('./claude');
 
 /**
- * Brightspace LMS Crawler
+ * Deep Brightspace LMS Crawler
  *
- * Automates login and extraction of courses + assignments from
- * D2L Brightspace. Designed to be extended for other LMS platforms.
+ * State-machine scraper that mirrors the Chrome extension's deep crawl:
+ * Login → Find Courses → For each course:
+ *   1. Content page (modules/topics)
+ *   2. Assignments list
+ *   3. Each assignment detail (full instructions, rubric)
+ *   4. Quizzes page
+ *
+ * Uses Claude via parsePageContent() to extract structured data from raw page
+ * text — no brittle CSS selectors for data extraction.
  */
 
 const TIMEOUTS = {
   navigation: 30000,
-  selector: 10000,
+  networkIdle: 15000,
   betweenPages: 1500,
+  scrollStep: 400,
 };
+
+const MAX_TEXT_LENGTH = 100000;
+
+// ─── Browser Setup ──────────────────────────────────────────────────────────
 
 async function createBrowser() {
   return chromium.launch({
@@ -33,67 +46,105 @@ async function createContext(browser) {
   });
 }
 
+// ─── Navigation Helpers ─────────────────────────────────────────────────────
+
 /**
- * Main sync function — logs in, discovers courses, extracts assignments.
- * Returns { courses, assignments } with structured data.
+ * Navigate to URL with networkidle, falling back to domcontentloaded + wait
+ * if networkidle times out (Brightspace has persistent connections).
  */
-async function syncBrightspace(lmsUrl, username, password, onProgress) {
-  const progress = onProgress || (() => {});
-  const browser = await createBrowser();
-
+async function navigateAndWait(page, url, lmsUrl, credentials) {
   try {
-    const context = await createContext(browser);
-    const page = await context.newPage();
-
-    // Block unnecessary resources to speed up crawling
-    await page.route('**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf}', (route) =>
-      route.abort()
-    );
-
-    // Step 1: Login
-    progress('Logging in to Brightspace...');
-    await login(page, lmsUrl, username, password);
-
-    // Step 2: Discover courses
-    progress('Discovering courses...');
-    const courses = await discoverCourses(page, lmsUrl);
-    progress(`Found ${courses.length} courses`);
-
-    // Step 3: Extract assignments from each course
-    const allAssignments = [];
-    for (let i = 0; i < courses.length; i++) {
-      const course = courses[i];
-      progress(`Scanning ${course.name} (${i + 1}/${courses.length})...`);
-
-      try {
-        const assignments = await extractCourseAssignments(page, lmsUrl, course);
-        allAssignments.push(...assignments);
-      } catch (err) {
-        console.error(`Failed to extract assignments for ${course.name}:`, err.message);
-        // Continue with other courses
-      }
-
-      // Polite delay between courses
-      await page.waitForTimeout(TIMEOUTS.betweenPages);
+    await page.goto(url, { waitUntil: 'networkidle', timeout: TIMEOUTS.networkIdle });
+  } catch {
+    // networkidle timeout — fall back to domcontentloaded + delay
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.navigation });
+    } catch {
+      // Already on the page from the first attempt, just wait
     }
+    await page.waitForTimeout(3000);
+  }
 
-    progress(`Sync complete: ${courses.length} courses, ${allAssignments.length} assignments`);
-
-    return { courses, assignments: allAssignments };
-  } finally {
-    await browser.close();
+  // Check if session expired and we got redirected to login
+  if (credentials && lmsUrl) {
+    const alive = await checkSessionAlive(page, lmsUrl);
+    if (!alive) {
+      console.log('[Crawler] Session expired, re-logging in...');
+      await login(page, lmsUrl, credentials.username, credentials.password);
+      // Retry the original navigation
+      try {
+        await page.goto(url, { waitUntil: 'networkidle', timeout: TIMEOUTS.networkIdle });
+      } catch {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.navigation });
+        await page.waitForTimeout(3000);
+      }
+    }
   }
 }
 
 /**
- * Handles Brightspace login flow.
- * Brightspace login pages vary by institution, so we try multiple selectors.
+ * Check if we're still logged in (not redirected to login page).
  */
+async function checkSessionAlive(page, lmsUrl) {
+  const currentUrl = page.url();
+  if (currentUrl.includes('/d2l/login') || currentUrl.includes('/login')) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Scroll to bottom incrementally to trigger lazy-loaded content.
+ */
+async function scrollToBottom(page) {
+  await page.evaluate(async (stepDelay) => {
+    const max = document.documentElement.scrollHeight;
+    const step = Math.floor(window.innerHeight * 0.7);
+    let pos = 0;
+    while (pos < max) {
+      pos += step;
+      window.scrollTo({ top: pos, behavior: 'smooth' });
+      await new Promise(r => setTimeout(r, stepDelay));
+    }
+    window.scrollTo({ top: 0 });
+  }, TIMEOUTS.scrollStep);
+}
+
+/**
+ * Extract page text + all /d2l/ links with labels.
+ * Ported from chrome-extension/content.js extractText().
+ */
+async function extractPageText(page) {
+  return page.evaluate(() => {
+    const clone = document.body.cloneNode(true);
+    clone.querySelectorAll('script,style,svg,iframe,img,noscript,link,meta').forEach(e => e.remove());
+    let text = (clone.innerText || clone.textContent || '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+
+    // Append all d2l links with labels — Claude needs URLs to find detail links
+    const links = [];
+    document.querySelectorAll('a[href*="/d2l/"]').forEach(a => {
+      const href = a.getAttribute('href');
+      const label = a.textContent.trim();
+      if (href && label && label.length > 1) {
+        links.push(`[LINK: "${label}" → ${href}]`);
+      }
+    });
+    if (links.length > 0) {
+      text += '\n\n─── PAGE LINKS ───\n' + links.join('\n');
+    }
+    return text;
+  });
+}
+
+// ─── Login ──────────────────────────────────────────────────────────────────
+
 async function login(page, lmsUrl, username, password) {
   const loginUrl = `${lmsUrl}/d2l/login`;
   await page.goto(loginUrl, { waitUntil: 'networkidle', timeout: TIMEOUTS.navigation });
 
-  // Try common Brightspace login form selectors
   const usernameSelectors = [
     '#userName', '#username', '#email',
     'input[name="userName"]', 'input[name="username"]', 'input[name="email"]',
@@ -112,263 +163,364 @@ async function login(page, lmsUrl, username, password) {
     'button.primary', 'button[name="submit"]',
   ];
 
-  // Fill username
   const usernameField = await findFirstVisible(page, usernameSelectors);
-  if (!usernameField) {
-    throw new Error('Could not find username field on login page');
-  }
+  if (!usernameField) throw new Error('Could not find username field on login page');
   await usernameField.fill(username);
 
-  // Fill password
   const passwordField = await findFirstVisible(page, passwordSelectors);
-  if (!passwordField) {
-    throw new Error('Could not find password field on login page');
-  }
+  if (!passwordField) throw new Error('Could not find password field on login page');
   await passwordField.fill(password);
 
-  // Submit
   const submitButton = await findFirstVisible(page, submitSelectors);
-  if (!submitButton) {
-    throw new Error('Could not find submit button on login page');
-  }
+  if (!submitButton) throw new Error('Could not find submit button on login page');
   await submitButton.click();
 
-  // Wait for navigation after login
   await page.waitForURL((url) => !url.href.includes('/login'), {
     timeout: TIMEOUTS.navigation,
   });
 
-  // Verify login succeeded — check for common post-login indicators
   const currentUrl = page.url();
   if (currentUrl.includes('/login') || currentUrl.includes('error')) {
     throw new Error('Login failed — check your credentials');
   }
 }
 
-/**
- * Discovers enrolled courses from the Brightspace homepage.
- */
-async function discoverCourses(page, lmsUrl) {
-  // Navigate to the homepage / my courses
-  await page.goto(`${lmsUrl}/d2l/home`, {
-    waitUntil: 'networkidle',
-    timeout: TIMEOUTS.navigation,
-  });
+// ─── Course Discovery ───────────────────────────────────────────────────────
 
-  // Try the Brightspace enrollments widget / course cards
-  // Multiple strategies since Brightspace theming varies
-  const courses = [];
+async function discoverCourses(page, lmsUrl, progress) {
+  progress('Discovering courses...');
+  await navigateAndWait(page, `${lmsUrl}/d2l/home`, lmsUrl, null);
 
-  // Strategy 1: Course selector widget (common in newer Brightspace)
-  const courseCards = await page.$$('.course-card, .d2l-card, [class*="enrollment-card"]');
-  if (courseCards.length > 0) {
-    for (const card of courseCards) {
-      const course = await extractCourseFromCard(card);
-      if (course) courses.push(course);
-    }
+  // Scroll to trigger lazy loading
+  await scrollToBottom(page);
+  await page.waitForTimeout(1000);
+
+  // Extract page text and let Claude parse it
+  const pageText = await extractPageText(page);
+  const truncated = pageText.substring(0, MAX_TEXT_LENGTH);
+
+  let courses = [];
+
+  try {
+    const parsed = await parsePageContent(truncated, 'courses');
+    courses = parsed.courses || [];
+  } catch (err) {
+    console.error('[Crawler] Claude parse failed for courses, falling back to DOM:', err.message);
   }
 
-  // Strategy 2: Course links in a list/table
+  // Fallback: DOM-based extraction if Claude found nothing
   if (courses.length === 0) {
-    const courseLinks = await page.$$('a[href*="/d2l/home/"]');
-    for (const link of courseLinks) {
-      const href = await link.getAttribute('href');
-      const text = await link.innerText();
-
-      if (href && text && href.match(/\/d2l\/home\/\d+/)) {
-        const courseId = href.match(/\/d2l\/home\/(\d+)/)?.[1];
-        if (courseId) {
-          courses.push({
-            platformCourseId: courseId,
-            name: text.trim(),
-            courseCode: extractCourseCode(text.trim()),
-            url: `${lmsUrl}/d2l/home/${courseId}`,
+    courses = await page.evaluate((baseUrl) => {
+      const results = [];
+      const seen = new Set();
+      document.querySelectorAll('a[href*="/d2l/home/"]').forEach(link => {
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/\/d2l\/home\/(\d+)/);
+        if (!match || seen.has(match[1])) return;
+        seen.add(match[1]);
+        const name = link.textContent.trim();
+        if (name && name.length > 2) {
+          const code = name.match(/([A-Z]{2,5}[-\s]?\d{3,5})/i);
+          results.push({
+            courseId: match[1],
+            name: name.substring(0, 200),
+            code: code ? code[1].trim() : null,
+            url: `${baseUrl}/d2l/home/${match[1]}`,
           });
         }
-      }
-    }
+      });
+      return results;
+    }, lmsUrl);
   }
 
-  // Strategy 3: Try the My Courses page directly
+  // Strategy 3: Try My Courses page
   if (courses.length === 0) {
-    await page.goto(`${lmsUrl}/d2l/le/manageCourses/search/6605`, {
-      waitUntil: 'networkidle',
-      timeout: TIMEOUTS.navigation,
-    });
-
-    const rows = await page.$$('tr[class*="d2l"], .d2l-datalist-item');
-    for (const row of rows) {
-      const link = await row.$('a[href*="/d2l/home/"]');
-      if (link) {
-        const href = await link.getAttribute('href');
-        const text = await link.innerText();
-        const courseId = href?.match(/\/d2l\/home\/(\d+)/)?.[1];
-        if (courseId && text) {
-          courses.push({
-            platformCourseId: courseId,
-            name: text.trim(),
-            courseCode: extractCourseCode(text.trim()),
-            url: `${lmsUrl}/d2l/home/${courseId}`,
-          });
-        }
-      }
+    await navigateAndWait(page, `${lmsUrl}/d2l/le/manageCourses/search/6605`, lmsUrl, null);
+    const text2 = await extractPageText(page);
+    try {
+      const parsed2 = await parsePageContent(text2.substring(0, MAX_TEXT_LENGTH), 'courses');
+      courses = parsed2.courses || [];
+    } catch {
+      // Last resort DOM fallback already tried above
     }
   }
 
-  // Deduplicate by courseId
+  // Ensure URLs are absolute
+  courses = courses.map(c => ({
+    ...c,
+    url: c.url || `${lmsUrl}/d2l/home/${c.courseId}`,
+  }));
+
+  // Deduplicate
   const seen = new Set();
-  return courses.filter((c) => {
-    if (seen.has(c.platformCourseId)) return false;
-    seen.add(c.platformCourseId);
+  courses = courses.filter(c => {
+    if (seen.has(c.courseId)) return false;
+    seen.add(c.courseId);
     return true;
   });
+
+  progress(`Found ${courses.length} courses`);
+  return courses;
 }
 
-async function extractCourseFromCard(card) {
+// ─── Content Modules Crawl ──────────────────────────────────────────────────
+
+async function crawlContentModules(page, lmsUrl, courseId, credentials, progress) {
+  const contentUrl = `${lmsUrl}/d2l/le/content/${courseId}/Home`;
+  await navigateAndWait(page, contentUrl, lmsUrl, credentials);
+  await scrollToBottom(page);
+
+  // Extract top-level content page
+  const pageText = await extractPageText(page);
+  let materials = [];
+
   try {
-    const link = await card.$('a[href*="/d2l/home/"]');
-    if (!link) return null;
-
-    const href = await link.getAttribute('href');
-    const text = await link.innerText();
-    const courseId = href?.match(/\/d2l\/home\/(\d+)/)?.[1];
-
-    if (!courseId || !text) return null;
-
-    return {
-      platformCourseId: courseId,
-      name: text.trim(),
-      courseCode: extractCourseCode(text.trim()),
-      url: href,
-    };
-  } catch {
-    return null;
+    const parsed = await parsePageContent(pageText.substring(0, MAX_TEXT_LENGTH), 'course_content', courseId);
+    materials = parsed.materials || [];
+  } catch (err) {
+    console.error(`[Crawler] Failed to parse content page for course ${courseId}:`, err.message);
+    return [];
   }
-}
 
-/**
- * Extracts assignments from a single course.
- * Tries multiple Brightspace assignment page patterns.
- */
-async function extractCourseAssignments(page, lmsUrl, course) {
-  const courseId = course.platformCourseId;
-  const assignments = [];
+  // Click into each module in the sidebar to load its topics
+  const moduleLinks = await page.$$('a[href*="/d2l/le/content/"]');
+  const visitedUrls = new Set([page.url()]);
 
-  // Try Assignments/Dropbox page
-  const assignmentUrls = [
-    `${lmsUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}&isprv=0`,
-    `${lmsUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}`,
-  ];
-
-  for (const url of assignmentUrls) {
+  for (const link of moduleLinks) {
     try {
-      await page.goto(url, { waitUntil: 'networkidle', timeout: TIMEOUTS.navigation });
-
-      // Look for assignment rows in the dropbox/folders list
-      const rows = await page.$$('.d2l-datalist-item, tr.d_ggl1, tr.d_ggl2, tr[class*="d2l"], .d2l-table-row');
-
-      for (const row of rows) {
-        const assignment = await extractAssignmentFromRow(row, courseId);
-        if (assignment) {
-          assignments.push(assignment);
-        }
-      }
-
-      if (assignments.length > 0) break;
-
-      // Fallback: try finding assignment links more broadly
-      const links = await page.$$('a[href*="dropbox"][href*="folder"]');
-      for (const link of links) {
-        const text = await link.innerText().catch(() => '');
-        const href = await link.getAttribute('href');
-        if (text && text.trim().length > 2) {
-          assignments.push({
-            platformAssignmentId: href?.match(/db=(\d+)/)?.[1] || `${courseId}_${text.trim().slice(0, 20)}`,
-            courseId,
-            title: text.trim(),
-            assignmentUrl: href ? `${lmsUrl}${href}` : null,
-            assignmentType: 'dropbox',
-          });
-        }
-      }
-
-      if (assignments.length > 0) break;
-    } catch (err) {
-      console.error(`Failed to load assignments page for course ${courseId}:`, err.message);
-    }
-  }
-
-  // Also try Quizzes page
-  try {
-    await page.goto(`${lmsUrl}/d2l/lms/quizzing/user/quizzes_list.d2l?ou=${courseId}`, {
-      waitUntil: 'networkidle',
-      timeout: TIMEOUTS.navigation,
-    });
-
-    const quizLinks = await page.$$('a[href*="quiz"]');
-    for (const link of quizLinks) {
-      const text = await link.innerText().catch(() => '');
       const href = await link.getAttribute('href');
-      if (text && text.trim().length > 2 && href?.includes('qu=')) {
-        const quizId = href.match(/qu=(\d+)/)?.[1];
-        assignments.push({
-          platformAssignmentId: quizId || `quiz_${courseId}_${text.trim().slice(0, 20)}`,
-          courseId,
-          title: text.trim(),
-          assignmentUrl: href ? `${lmsUrl}${href}` : null,
-          assignmentType: 'quiz',
-        });
+      if (!href || visitedUrls.has(href)) continue;
+
+      const fullUrl = href.startsWith('http') ? href : `${lmsUrl}${href}`;
+      // Only follow links that look like module/topic pages for this course
+      if (!fullUrl.includes(`/content/${courseId}/`)) continue;
+      visitedUrls.add(fullUrl);
+
+      await navigateAndWait(page, fullUrl, lmsUrl, credentials);
+      await scrollToBottom(page);
+
+      const topicText = await extractPageText(page);
+      if (topicText.length < 50) continue; // Skip near-empty pages
+
+      try {
+        const topicParsed = await parsePageContent(
+          topicText.substring(0, MAX_TEXT_LENGTH),
+          'course_content',
+          courseId
+        );
+        if (topicParsed.materials && topicParsed.materials.length > 0) {
+          // Merge new materials, avoiding duplicates by module name
+          const existingNames = new Set(materials.map(m => m.moduleName));
+          for (const m of topicParsed.materials) {
+            if (!existingNames.has(m.moduleName)) {
+              materials.push(m);
+              existingNames.add(m.moduleName);
+            }
+          }
+        }
+      } catch {
+        // Skip individual topic parse failures
       }
+    } catch {
+      // Skip individual module navigation failures
     }
-  } catch {
-    // Quizzes page may not exist for all courses
   }
+
+  return materials.map(m => ({ ...m, courseId }));
+}
+
+// ─── Assignments Crawl ──────────────────────────────────────────────────────
+
+async function crawlAssignments(page, lmsUrl, courseId, credentials, progress) {
+  const listUrl = `${lmsUrl}/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}&isprv=0`;
+  await navigateAndWait(page, listUrl, lmsUrl, credentials);
+  await scrollToBottom(page);
+
+  const pageText = await extractPageText(page);
+  let assignments = [];
+
+  try {
+    const parsed = await parsePageContent(pageText.substring(0, MAX_TEXT_LENGTH), 'assignments_list', courseId);
+    assignments = parsed.assignments || [];
+  } catch (err) {
+    console.error(`[Crawler] Failed to parse assignments list for course ${courseId}:`, err.message);
+    return [];
+  }
+
+  // Tag each assignment with courseId and type
+  assignments = assignments.map(a => ({
+    ...a,
+    courseId,
+    assignmentType: 'dropbox',
+  }));
 
   return assignments;
 }
 
-async function extractAssignmentFromRow(row, courseId) {
+async function crawlAssignmentDetail(page, lmsUrl, assignment, credentials, progress) {
+  if (!assignment.detailUrl) return assignment;
+
+  const url = assignment.detailUrl.startsWith('http')
+    ? assignment.detailUrl
+    : `${lmsUrl}${assignment.detailUrl}`;
+
+  await navigateAndWait(page, url, lmsUrl, credentials);
+  await scrollToBottom(page);
+
+  const pageText = await extractPageText(page);
+
   try {
-    // Get assignment title
-    const titleEl = await row.$('a, .d2l-heading, .d2l-textblock, th');
-    if (!titleEl) return null;
+    const parsed = await parsePageContent(pageText.substring(0, MAX_TEXT_LENGTH), 'assignment_detail');
+    assignment.fullInstructions = parsed.fullInstructions || null;
+    assignment.rubric = parsed.rubric || null;
+    assignment.requirements = parsed.requirements || [];
+    assignment.attachments = parsed.attachments || [];
+    assignment.assignmentUrl = url;
+  } catch (err) {
+    console.error(`[Crawler] Failed to parse detail for "${assignment.title}":`, err.message);
+  }
 
-    const title = await titleEl.innerText().catch(() => '');
-    if (!title || title.trim().length < 2) return null;
+  return assignment;
+}
 
-    const href = await titleEl.getAttribute('href').catch(() => null);
+// ─── Quizzes Crawl ──────────────────────────────────────────────────────────
 
-    // Try to extract due date
-    const dueDateText = await extractTextByPattern(row, /due|deadline|closes/i);
-    const dueDate = dueDateText ? parseDateString(dueDateText) : null;
+async function crawlQuizzes(page, lmsUrl, courseId, credentials, progress) {
+  const quizUrl = `${lmsUrl}/d2l/lms/quizzing/user/quizzes_list.d2l?ou=${courseId}`;
+  await navigateAndWait(page, quizUrl, lmsUrl, credentials);
+  await scrollToBottom(page);
 
-    // Try to extract points
-    const pointsText = await extractTextByPattern(row, /\/\s*\d+|points|score/i);
-    const points = pointsText ? parseFloat(pointsText.match(/(\d+(?:\.\d+)?)/)?.[1]) : null;
+  const pageText = await extractPageText(page);
+  let quizzes = [];
 
-    // Try to extract submission status
-    const statusText = await row.innerText().catch(() => '');
-    const status = inferSubmissionStatus(statusText);
+  try {
+    const parsed = await parsePageContent(pageText.substring(0, MAX_TEXT_LENGTH), 'quizzes', courseId);
+    quizzes = (parsed.quizzes || []).map(q => ({ ...q, courseId }));
+  } catch (err) {
+    console.error(`[Crawler] Failed to parse quizzes for course ${courseId}:`, err.message);
+  }
 
-    const assignmentId = href?.match(/(?:db|fid|qu)=(\d+)/)?.[1] ||
-      `${courseId}_${title.trim().slice(0, 30)}`;
+  return quizzes;
+}
 
-    return {
-      platformAssignmentId: assignmentId,
-      courseId,
-      title: title.trim(),
-      dueDate,
-      pointsPossible: points,
-      submissionStatus: status,
-      assignmentUrl: href,
-      assignmentType: 'dropbox',
-    };
-  } catch {
-    return null;
+// ─── Main Deep Sync ─────────────────────────────────────────────────────────
+
+/**
+ * Deep sync: logs in, discovers courses, then for each course crawls
+ * content modules, assignments (with detail pages), and quizzes.
+ *
+ * Returns { courses, assignments, quizzes, materials }
+ */
+async function syncBrightspace(lmsUrl, username, password, onProgress) {
+  const progress = onProgress || (() => {});
+  const browser = await createBrowser();
+  const credentials = { username, password };
+
+  const results = {
+    courses: [],
+    assignments: [],
+    quizzes: [],
+    materials: [],
+  };
+
+  let totalPagesScraped = 0;
+
+  try {
+    const context = await createContext(browser);
+    const page = await context.newPage();
+
+    // Block images/fonts to speed up crawling
+    await page.route('**/*.{png,jpg,jpeg,gif,svg,woff,woff2,ttf}', (route) =>
+      route.abort()
+    );
+
+    // Step 1: Login
+    progress('Logging in to Brightspace...');
+    await login(page, lmsUrl, username, password);
+    progress('Logged in successfully');
+
+    // Step 2: Discover courses
+    const courses = await discoverCourses(page, lmsUrl, progress);
+    results.courses = courses;
+
+    if (courses.length === 0) {
+      progress('No courses found');
+      return results;
+    }
+
+    // Step 3: Deep crawl each course
+    for (let i = 0; i < courses.length; i++) {
+      const course = courses[i];
+      const courseId = course.courseId;
+      const courseName = course.name;
+      const courseProgress = `[${i + 1}/${courses.length}] ${courseName}`;
+
+      // ── Content modules ──
+      try {
+        progress(`${courseProgress} — reading content modules...`);
+        const materials = await crawlContentModules(page, lmsUrl, courseId, credentials, progress);
+        results.materials.push(...materials);
+        totalPagesScraped++;
+        const topicCount = materials.reduce((sum, m) => sum + (m.topics?.length || 0), 0);
+        progress(`${courseProgress} — found ${materials.length} modules, ${topicCount} topics`);
+      } catch (err) {
+        console.error(`[Crawler] Content crawl failed for ${courseName}:`, err.message);
+      }
+
+      await page.waitForTimeout(TIMEOUTS.betweenPages);
+
+      // ── Assignments list ──
+      let assignments = [];
+      try {
+        progress(`${courseProgress} — reading assignments...`);
+        assignments = await crawlAssignments(page, lmsUrl, courseId, credentials, progress);
+        totalPagesScraped++;
+        progress(`${courseProgress} — found ${assignments.length} assignments`);
+      } catch (err) {
+        console.error(`[Crawler] Assignments crawl failed for ${courseName}:`, err.message);
+      }
+
+      await page.waitForTimeout(TIMEOUTS.betweenPages);
+
+      // ── Assignment details ──
+      const assignmentsWithDetails = assignments.filter(a => a.detailUrl);
+      for (let j = 0; j < assignmentsWithDetails.length; j++) {
+        const a = assignmentsWithDetails[j];
+        try {
+          progress(`${courseProgress} — reading assignment ${j + 1}/${assignmentsWithDetails.length}: ${a.title}`);
+          await crawlAssignmentDetail(page, lmsUrl, a, credentials, progress);
+          totalPagesScraped++;
+        } catch (err) {
+          console.error(`[Crawler] Detail crawl failed for "${a.title}":`, err.message);
+        }
+        await page.waitForTimeout(TIMEOUTS.betweenPages);
+      }
+
+      results.assignments.push(...assignments);
+
+      // ── Quizzes ──
+      try {
+        progress(`${courseProgress} — reading quizzes...`);
+        const quizzes = await crawlQuizzes(page, lmsUrl, courseId, credentials, progress);
+        results.quizzes.push(...quizzes);
+        totalPagesScraped++;
+        progress(`${courseProgress} — found ${quizzes.length} quizzes`);
+      } catch (err) {
+        console.error(`[Crawler] Quizzes crawl failed for ${courseName}:`, err.message);
+      }
+
+      await page.waitForTimeout(TIMEOUTS.betweenPages);
+    }
+
+    progress(`Sync complete: ${courses.length} courses, ${results.assignments.length} assignments, ${results.quizzes.length} quizzes, ${results.materials.length} modules (${totalPagesScraped} pages scraped)`);
+
+    return results;
+  } finally {
+    await browser.close();
   }
 }
 
-// --- Utility Functions ---
+// ─── Utility Functions ──────────────────────────────────────────────────────
 
 async function findFirstVisible(page, selectors) {
   for (const selector of selectors) {
@@ -380,47 +532,6 @@ async function findFirstVisible(page, selectors) {
     }
   }
   return null;
-}
-
-async function extractTextByPattern(element, pattern) {
-  try {
-    const cells = await element.$$('td, span, div, small');
-    for (const cell of cells) {
-      const text = await cell.innerText();
-      if (pattern.test(text)) return text;
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function extractCourseCode(courseName) {
-  // Try to extract course code like "CIS 101" or "BIOL-2301"
-  const match = courseName.match(/([A-Z]{2,5}[-\s]?\d{3,5})/i);
-  return match ? match[1].trim() : null;
-}
-
-function parseDateString(text) {
-  if (!text) return null;
-
-  // Try to extract a date from messy text
-  // Common formats: "Due: Mar 15, 2026", "Deadline: 2026-03-15", "Mar 15 at 11:59 PM"
-  const cleaned = text.replace(/due|deadline|closes|opens|available/gi, '').trim();
-
-  const date = new Date(cleaned);
-  if (!isNaN(date.getTime()) && date.getFullYear() > 2020) {
-    return date.toISOString();
-  }
-  return null;
-}
-
-function inferSubmissionStatus(text) {
-  const lower = text.toLowerCase();
-  if (lower.includes('submitted') || lower.includes('completed')) return 'submitted';
-  if (lower.includes('graded') || lower.includes('marked')) return 'graded';
-  if (lower.includes('overdue') || lower.includes('past due')) return 'overdue';
-  return 'not_submitted';
 }
 
 module.exports = { syncBrightspace };

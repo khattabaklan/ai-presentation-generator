@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Assignment Tracker — Academic Command Center</title>
+  <title>My Assignments — Academic Assistant</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/tracker.css">
 </head>
 <body>
   <nav class="navbar">
     <div class="container">
-      <a href="index.html" class="navbar-brand">AI Slides</a>
+      <a href="index.html" class="navbar-brand">academic assistant</a>
       <ul class="navbar-links" id="nav-links"></ul>
     </div>
   </nav>
@@ -20,35 +20,56 @@
     <!-- Setup Section — shown when no synced data exists -->
     <div id="setup-section" class="hidden">
       <div class="setup-card card">
-        <h1>Sync Your Assignments</h1>
-        <p class="subtitle">Use the Chrome extension to automatically pull assignments from Brightspace — no passwords stored, no credentials shared.</p>
-
-        <div class="setup-steps">
-          <div class="setup-step">
-            <div class="step-number">1</div>
-            <div>
-              <strong>Install the Chrome Extension</strong>
-              <p>Open <code>chrome://extensions</code>, enable Developer Mode, click "Load unpacked" and select the <code>chrome-extension</code> folder from the project.</p>
-            </div>
-          </div>
-          <div class="setup-step">
-            <div class="step-number">2</div>
-            <div>
-              <strong>Log in to Brightspace</strong>
-              <p>Open your university's Brightspace and log in normally. The extension uses your existing session — nothing is stored.</p>
-            </div>
-          </div>
-          <div class="setup-step">
-            <div class="step-number">3</div>
-            <div>
-              <strong>Click "Sync Assignments"</strong>
-              <p>Click the extension icon and hit Sync. It scans your courses, reads assignments and due dates, and sends them here.</p>
-            </div>
-          </div>
+        <div class="setup-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
         </div>
+        <h1>Connect your courses</h1>
+        <p class="subtitle">Pull your assignments, due dates, and course content straight from Brightspace. Two ways to sync:</p>
 
-        <div class="alert alert-info">
-          Your Brightspace credentials are never sent to our servers. The extension reads your assignments directly from your browser where you're already logged in.
+        <div class="setup-methods">
+          <!-- Method 1: Server Sync -->
+          <div class="setup-method">
+            <div class="method-header">
+              <span class="method-badge method-recommended">Recommended</span>
+              <h3>Quick sync</h3>
+              <p>Enter your Brightspace login. We'll scan everything automatically.</p>
+            </div>
+            <form id="setup-login-form" class="setup-form">
+              <div class="form-group">
+                <label for="setup-lms-url">Brightspace URL</label>
+                <input type="url" id="setup-lms-url" placeholder="https://yourschool.brightspace.com" required>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="setup-username">Username</label>
+                  <input type="text" id="setup-username" placeholder="Your student ID" required>
+                </div>
+                <div class="form-group">
+                  <label for="setup-password">Password</label>
+                  <input type="password" id="setup-password" placeholder="Password" required>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Connect & Sync</button>
+              <p class="setup-privacy">Your credentials are encrypted and only used to log in to Brightspace on your behalf.</p>
+            </form>
+          </div>
+
+          <div class="setup-divider"><span>or</span></div>
+
+          <!-- Method 2: Extension -->
+          <div class="setup-method">
+            <div class="method-header">
+              <h3>Chrome extension</h3>
+              <p>Install our extension, log in to Brightspace normally, and click Sync. No passwords stored.</p>
+            </div>
+            <ol class="setup-steps-compact">
+              <li>Open <code>chrome://extensions</code> and enable Developer Mode</li>
+              <li>Click "Load unpacked" and select the <code>chrome-extension</code> folder</li>
+              <li>Go to Brightspace, click the extension icon, hit Sync</li>
+            </ol>
+          </div>
         </div>
       </div>
     </div>
@@ -59,66 +80,81 @@
       <!-- Header -->
       <div class="tracker-header">
         <div>
-          <h1>Assignment Tracker</h1>
-          <p id="last-sync" class="subtitle">Last synced: never</p>
+          <h1>My assignments</h1>
+          <p id="last-sync" class="subtitle"></p>
         </div>
         <div class="tracker-actions">
-          <button class="btn btn-primary" id="sync-btn">Sync Now</button>
-          <button class="btn btn-outline" id="settings-btn">LMS Settings</button>
+          <button class="btn btn-primary" id="sync-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            Sync now
+          </button>
+          <button class="btn btn-ghost" id="settings-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
         </div>
       </div>
 
       <!-- Sync Progress -->
-      <div id="sync-progress" class="card hidden" style="text-align: center; padding: 24px;">
-        <div class="spinner"></div>
-        <p id="sync-status-text" class="progress-text">Starting sync...</p>
+      <div id="sync-progress" class="sync-progress-card hidden">
+        <div class="sync-progress-inner">
+          <div class="sync-spinner"></div>
+          <div class="sync-progress-info">
+            <p id="sync-status-text" class="sync-status-text">Starting sync...</p>
+            <div class="sync-progress-bar">
+              <div class="sync-progress-fill" id="sync-progress-fill"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Urgency Banner -->
-      <div id="urgency-banner" class="urgency-banner hidden"></div>
-
-      <!-- Stats Row -->
-      <div class="stats-row" id="tracker-stats">
-        <div class="card stat-card">
-          <div class="value" id="stat-due-week">-</div>
-          <div class="label">Due This Week</div>
+      <!-- Quick Glance — what needs attention -->
+      <div id="quick-glance" class="quick-glance hidden">
+        <div id="glance-urgent" class="glance-card glance-urgent hidden">
+          <div class="glance-icon">!</div>
+          <div class="glance-info">
+            <div class="glance-number" id="glance-urgent-count">0</div>
+            <div class="glance-label">Need attention</div>
+          </div>
         </div>
-        <div class="card stat-card">
-          <div class="value" id="stat-overdue">-</div>
-          <div class="label">Overdue</div>
+        <div class="glance-card glance-due">
+          <div class="glance-info">
+            <div class="glance-number" id="glance-due-count">0</div>
+            <div class="glance-label">Due this week</div>
+          </div>
         </div>
-        <div class="card stat-card">
-          <div class="value" id="stat-completed">-</div>
-          <div class="label">Completed</div>
+        <div class="glance-card glance-done">
+          <div class="glance-info">
+            <div class="glance-number" id="glance-done-count">0</div>
+            <div class="glance-label">Done</div>
+          </div>
         </div>
-        <div class="card stat-card">
-          <div class="value" id="stat-courses">-</div>
-          <div class="label">Courses</div>
+        <div class="glance-card glance-courses">
+          <div class="glance-info">
+            <div class="glance-number" id="glance-course-count">0</div>
+            <div class="glance-label">Courses</div>
+          </div>
         </div>
       </div>
 
       <!-- Filter Bar -->
       <div class="filter-bar">
-        <div class="filter-group">
-          <label>Course:</label>
-          <select id="filter-course">
-            <option value="all">All Courses</option>
-          </select>
+        <div class="filter-tabs" id="filter-tabs">
+          <button class="filter-tab active" data-filter="all">All</button>
+          <button class="filter-tab" data-filter="upcoming">Upcoming</button>
+          <button class="filter-tab" data-filter="overdue">Overdue</button>
+          <button class="filter-tab" data-filter="submitted">Done</button>
         </div>
-        <div class="filter-group">
-          <label>Status:</label>
-          <select id="filter-status">
-            <option value="all">All</option>
-            <option value="not_submitted">Not Submitted</option>
-            <option value="submitted">Submitted</option>
-            <option value="graded">Graded</option>
-            <option value="overdue">Overdue</option>
+        <div class="filter-selects">
+          <select id="filter-course" class="filter-select">
+            <option value="all">All courses</option>
           </select>
-        </div>
-        <div class="filter-group">
-          <label>Type:</label>
-          <select id="filter-type">
-            <option value="all">All Types</option>
+          <select id="filter-type" class="filter-select">
+            <option value="all">All types</option>
             <option value="dropbox">Assignments</option>
             <option value="quiz">Quizzes</option>
           </select>
@@ -129,33 +165,165 @@
       <div id="assignments-list"></div>
 
       <!-- Empty State -->
-      <div id="empty-assignments" class="card hidden" style="text-align: center; padding: 48px;">
-        <p style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 16px;">No assignments found yet.</p>
-        <p style="color: var(--text-secondary);">Use the Chrome extension on your Brightspace page to sync assignments.</p>
+      <div id="empty-assignments" class="empty-state hidden">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted);">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+        <p class="empty-title">No assignments yet</p>
+        <p class="empty-subtitle">Click "Sync now" to pull your assignments from Brightspace.</p>
       </div>
 
-    </div>
-
-    <!-- Settings Modal -->
-    <div id="settings-modal" class="modal-overlay hidden">
-      <div class="modal-content card">
-        <h2>Settings</h2>
-        <div id="current-lms-info" style="margin: 16px 0; color: var(--text-secondary);"></div>
-        <p style="color: var(--text-secondary); margin-bottom: 16px;">To re-sync, open Brightspace and click the extension.</p>
-        <div style="display: flex; gap: 12px; justify-content: flex-end;">
-          <button class="btn btn-outline" id="close-settings">Close</button>
-          <button class="btn btn-accent" id="disconnect-lms">Clear All Data</button>
-        </div>
-      </div>
     </div>
 
   </div>
 
-  <footer class="footer">
-    <div class="container">
-      <p>Academic Command Center &copy; 2026. Powered by Claude AI.</p>
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal-content card">
+      <button class="modal-close" id="close-settings">&times;</button>
+      <h2>Settings</h2>
+      <div id="current-lms-info" class="settings-info"></div>
+
+      <div class="settings-section">
+        <h3>Sync method</h3>
+        <form id="settings-login-form" class="setup-form">
+          <div class="form-group">
+            <label for="settings-lms-url">Brightspace URL</label>
+            <input type="url" id="settings-lms-url" placeholder="https://yourschool.brightspace.com">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="settings-username">Username</label>
+              <input type="text" id="settings-username" placeholder="Your student ID">
+            </div>
+            <div class="form-group">
+              <label for="settings-password">Password</label>
+              <input type="password" id="settings-password" placeholder="Password">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Save & Sync</button>
+        </form>
+      </div>
+
+      <div class="settings-danger">
+        <button class="btn btn-danger-outline" id="disconnect-lms">Clear all data</button>
+      </div>
     </div>
-  </footer>
+  </div>
+
+  <!-- AI Help / Generation Modal -->
+  <div id="gen-modal" class="modal-overlay hidden">
+    <div class="modal-content card gen-modal-card">
+      <button class="modal-close" id="gen-modal-close">&times;</button>
+
+      <!-- Step 1: Assignment info + generate -->
+      <div id="gen-step-form">
+        <div class="gen-header">
+          <span class="gen-course-pill" id="gen-modal-course"></span>
+          <h2 id="gen-modal-title"></h2>
+          <div id="gen-modal-due" class="gen-due-line"></div>
+        </div>
+
+        <!-- Assignment content preview -->
+        <div id="gen-deep-preview" class="gen-deep-preview hidden">
+          <div class="gen-preview-section" id="gen-instructions-section">
+            <div class="gen-preview-label">Instructions</div>
+            <div class="gen-preview-text" id="gen-deep-instructions"></div>
+          </div>
+          <div class="gen-preview-section hidden" id="gen-rubric-section">
+            <div class="gen-preview-label">Rubric</div>
+            <div class="gen-preview-text" id="gen-deep-rubric"></div>
+          </div>
+          <div class="gen-preview-section hidden" id="gen-attachments-section">
+            <div class="gen-preview-label">Attachments</div>
+            <div class="gen-preview-text" id="gen-deep-attachments"></div>
+          </div>
+        </div>
+
+        <div id="gen-no-content" class="gen-no-content hidden">
+          <p>No detailed instructions were found for this assignment. The AI will work with the assignment title and any available context.</p>
+        </div>
+
+        <div class="gen-options">
+          <label class="gen-option-label">What do you need?</label>
+          <div class="gen-type-grid" id="gen-type-grid">
+            <button class="gen-type-btn active" data-type="auto">
+              <span class="gen-type-icon">&#9733;</span>
+              Auto-detect
+            </button>
+            <button class="gen-type-btn" data-type="essay">
+              <span class="gen-type-icon">&#9998;</span>
+              Essay
+            </button>
+            <button class="gen-type-btn" data-type="slides">
+              <span class="gen-type-icon">&#9654;</span>
+              Slides
+            </button>
+            <button class="gen-type-btn" data-type="reflection">
+              <span class="gen-type-icon">&#128172;</span>
+              Reflection
+            </button>
+            <button class="gen-type-btn" data-type="notes">
+              <span class="gen-type-icon">&#128221;</span>
+              Notes
+            </button>
+            <button class="gen-type-btn" data-type="outline">
+              <span class="gen-type-icon">&#128203;</span>
+              Outline
+            </button>
+            <button class="gen-type-btn" data-type="instructions">
+              <span class="gen-type-icon">&#128295;</span>
+              Step-by-step
+            </button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-lg gen-go-btn" id="gen-modal-generate">
+          Generate
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;">
+            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Step 2: Progress -->
+      <div id="gen-step-progress" class="hidden" style="text-align: center; padding: 32px 0;">
+        <div class="spinner"></div>
+        <div class="gen-progress-bar-track">
+          <div class="gen-progress-bar-fill" id="gen-progress-fill"></div>
+        </div>
+        <p class="progress-text" id="gen-progress-text">Analyzing assignment...</p>
+      </div>
+
+      <!-- Step 3: Done -->
+      <div id="gen-step-done" class="hidden" style="text-align: center; padding: 32px 0;">
+        <div class="gen-done-icon">&#10003;</div>
+        <h2 class="gen-done-title">Ready to download</h2>
+        <p class="gen-done-subtitle">Your content has been generated.</p>
+        <div class="download-buttons">
+          <button class="btn btn-primary hidden" id="gen-download-pptx">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download .pptx
+          </button>
+          <button class="btn btn-primary hidden" id="gen-download-docx">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download .docx
+          </button>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div id="gen-step-error" class="hidden" style="text-align: center; padding: 32px 0;">
+        <h2 style="color: var(--red); margin-bottom: 8px;">Something went wrong</h2>
+        <p id="gen-error-text" style="color: var(--text-dim); margin-bottom: 20px;"></p>
+        <button class="btn btn-outline" id="gen-retry-btn">Try again</button>
+      </div>
+    </div>
+  </div>
 
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
