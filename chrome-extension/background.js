@@ -86,6 +86,8 @@ function cancelCrawl() {
 // ─── Start Crawl ────────────────────────────────────────────────────────────
 
 function startDeepCrawl(tabId, url) {
+  if (crawlState.active) return; // Guard against double-start
+
   const baseUrl = new URL(url).origin;
 
   crawlState = {
@@ -100,6 +102,11 @@ function startDeepCrawl(tabId, url) {
 
   // Check if user is already inside a course
   chrome.tabs.get(tabId, (tab) => {
+    if (chrome.runtime.lastError) {
+      console.error('[AA] tabs.get error:', chrome.runtime.lastError);
+      cancelCrawl();
+      return;
+    }
     const courseMatch = (tab.url || '').match(/\/d2l\/home\/(\d+)/);
 
     if (courseMatch) {
@@ -348,7 +355,6 @@ function onAssignmentDetailParsed(parsed) {
     goToAssignmentDetail();
   } else {
     crawlState.results.assignments.push(...crawlState.assignments);
-    saveProgressToBackend();
     broadcastProgress('Done with assignments. Checking quizzes...');
     goToQuizzes();
   }
@@ -438,13 +444,7 @@ async function finishCrawl(errorMsg) {
     await callBackend('/tracker/deep-import', crawlState.results);
     crawlState.phase = 'done';
     broadcastProgress('Deep scan complete!');
-  } catch (err) {
-    crawlState.error = 'Failed to save';
-    crawlState.phase = 'error';
-    broadcastProgress('Error saving results');
-  }
 
-  try {
     chrome.tabs.sendMessage(crawlState.tabId, {
       type: 'CRAWL_COMPLETE',
       results: {
@@ -453,8 +453,12 @@ async function finishCrawl(errorMsg) {
         quizzes: crawlState.results.quizzes.length,
         materials: crawlState.results.materials.reduce((s, m) => s + (m.topics?.length || 0), 0),
       },
-    });
-  } catch (e) {}
+    }).catch(() => {});
+  } catch (err) {
+    crawlState.error = 'Failed to save';
+    crawlState.phase = 'error';
+    broadcastProgress('Error saving results');
+  }
 }
 
 // ─── Backend ────────────────────────────────────────────────────────────────

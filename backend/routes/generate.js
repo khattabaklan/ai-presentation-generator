@@ -2,7 +2,6 @@ const express = require('express');
 const pool = require('../config/db');
 const authMiddleware = require('../middleware/auth');
 const { generateLimiter } = require('../middleware/rateLimit');
-const { generatePresentationContent } = require('../services/claude');
 const { generatePptxBuffer } = require('../services/slideBuilder');
 const { generateDocxBuffer } = require('../services/scriptBuilder');
 
@@ -79,20 +78,6 @@ router.post('/', authMiddleware, generateLimiter, async (req, res) => {
 
     const slides = Math.min(Math.max(parseInt(slideCount) || 10, 5), 20);
 
-    // Check access
-    const userResult = await pool.query(
-      'SELECT subscription_status, free_generations_used FROM users WHERE id = $1',
-      [req.userId]
-    );
-    const user = userResult.rows[0];
-
-    if (user.subscription_status === 'free' && user.free_generations_used >= 1) {
-      return res.status(402).json({
-        error: 'Free generation used. Subscribe to Pro for unlimited generations.',
-        requiresSubscription: true,
-      });
-    }
-
     // Create generation record
     const genResult = await pool.query(
       'INSERT INTO generations (user_id, assignment_text, slide_count, color_theme, status) VALUES ($1, $2, $3, $4, $5) RETURNING id',
@@ -144,17 +129,13 @@ async function processGeneration(generationId, userId, assignmentText, slideCoun
     "UPDATE generations SET status = 'completed', pptx_data = $1, docx_data = $2 WHERE id = $3",
     [pptxBuffer, docxBuffer, generationId]
   );
-
-  // Increment free generation counter
-  await pool.query(
-    "UPDATE users SET free_generations_used = free_generations_used + 1 WHERE id = $1 AND subscription_status = 'free'",
-    [userId]
-  );
 }
 
 function detectOutputType(text) {
   const lower = text.toLowerCase();
   if (lower.includes('presentation') || lower.includes('powerpoint') || lower.includes('slides')) return 'slides';
+  // Hands-on / technical assignments (Excel, Access, Word formatting, etc.)
+  if (lower.includes('excel') || lower.includes('spreadsheet') || lower.includes('worksheet') || lower.includes('access database') || lower.includes('microsoft access') || (lower.includes('query') && lower.includes('table')) || lower.includes('pivot table') || lower.includes('vlookup') || lower.includes('formula') || lower.includes('macro') || lower.includes('.xlsx') || lower.includes('.accdb')) return 'instructions';
   if (lower.includes('reflection') || lower.includes('journal') || lower.includes('personal experience')) return 'reflection';
   if (lower.includes('essay') || lower.includes('paper') || lower.includes('write a') || lower.includes('word count') || lower.includes('apa') || lower.includes('mla')) return 'essay';
   if (lower.includes('notes') || lower.includes('summary') || lower.includes('study guide') || lower.includes('review')) return 'notes';
@@ -268,7 +249,7 @@ router.get('/:id/download/:type', authMiddleware, async (req, res) => {
         : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="presentation.${type}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="assignment.${type}"`);
     res.send(data);
   } catch (err) {
     console.error('Download error:', err);

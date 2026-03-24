@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Presentation Generator — Turn Assignments into Presentations</title>
+  <title>Academic Assistant</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <nav class="navbar">
     <div class="container">
-      <a href="index.html" class="navbar-brand">AI Slides</a>
+      <a href="index.html" class="navbar-brand">academic assistant</a>
       <ul class="navbar-links" id="nav-links"></ul>
     </div>
   </nav>
 
   <section class="hero">
     <div class="container">
-      <h1>Turn Assignments into<br><span>Beautiful Presentations</span></h1>
-      <p>Paste your assignment instructions and get a professional PowerPoint presentation with speaker notes — powered by AI.</p>
+      <h1>The assignment<br>is <span>already done.</span></h1>
+      <p>Sync your Brightspace courses. Pick an assignment. Get a finished essay, reflection, outline, study notes, or slide deck in about 30 seconds. Written like a student, not a chatbot.</p>
       <div class="hero-actions">
-        <a href="app.html" class="btn btn-primary btn-lg">Get Started</a>
-        <a href="#report" class="btn btn-outline btn-lg">See How It Works</a>
+        <a href="tracker.html" class="btn btn-primary btn-lg">Open tracker</a>
+        <a href="#how" class="btn btn-outline btn-lg">How it works</a>
       </div>
     </div>
   </section>
@@ -29,61 +29,55 @@
     <div class="container">
       <div class="features-grid">
         <div class="card feature-card">
-          <div class="icon">&#x1F4DD;</div>
-          <h3>Paste Your Assignment</h3>
-          <p>Just copy and paste your assignment instructions or topic. The AI handles everything else.</p>
+          <div class="icon">01</div>
+          <h3>Pulls from Brightspace</h3>
+          <p>Chrome extension reads your assignments, full instructions, rubrics, and due dates. You don't paste anything.</p>
         </div>
         <div class="card feature-card">
-          <div class="icon">&#x1F3A8;</div>
-          <h3>AI-Generated Slides</h3>
-          <p>Get a structured, professional PowerPoint with clean layouts, bullet points, and multiple theme options.</p>
+          <div class="icon">02</div>
+          <h3>Handles any format</h3>
+          <p>Essays, reflections, study notes, outlines, slide decks, even step-by-step Excel and Access guides. Auto-detected from the instructions.</p>
         </div>
         <div class="card feature-card">
-          <div class="icon">&#x1F399;</div>
-          <h3>Speaker Script Included</h3>
-          <p>Download a Word document with detailed speaker notes for every slide — ready to present.</p>
+          <div class="icon">03</div>
+          <h3>Sounds like you</h3>
+          <p>Built-in humanizer strips out every AI writing pattern. Varied sentence length, real voice, no corporate filler.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="report-section" id="report">
+  <section class="report-section" id="how">
     <div class="container">
-      <h2>The Workflow Behind This Tool</h2>
-      <p class="subtitle">This product was born from a real university workflow — here's the story.</p>
+      <h2>How it works</h2>
+      <p class="subtitle">Four steps. Under a minute. No copy-pasting assignment instructions.</p>
       <div class="report-content card">
-        <h3>The Problem</h3>
-        <p>University students spend hours creating presentations for every assignment. The process is tedious: read the instructions, research the topic, organize the content into slides, design the layout, and write speaker notes. For a single 10-slide presentation, this can take 3-5 hours.</p>
+        <h3>Sync</h3>
+        <p>Install the Chrome extension, open Brightspace, click sync. It pulls every assignment, rubric, and due date across all your courses. Takes about 10 seconds.</p>
 
-        <h3>The Original Workflow</h3>
-        <p>Khattab built a personal workflow using Claude AI that automated this entire process:</p>
-        <ol>
-          <li><strong>Input:</strong> Paste the assignment instructions into Claude</li>
-          <li><strong>Content Generation:</strong> Claude analyzes the requirements and generates structured slide content — titles, bullet points, and detailed speaker notes for each slide</li>
-          <li><strong>Slide Creation:</strong> A Node.js script uses pptxgenjs to convert the structured content into a polished PowerPoint file</li>
-          <li><strong>Script Creation:</strong> Another script generates a Word document with the full speaker script, organized by slide</li>
-        </ol>
+        <h3>Pick</h3>
+        <p>Open the tracker. Your assignments are sorted by urgency. The overdue ones are at the top (sorry). Click "AI Help" on whichever one you need.</p>
 
-        <h3>The Result</h3>
-        <p>What used to take 3-5 hours now takes under 30 seconds. The presentations are well-structured, professionally formatted, and include everything needed to present confidently — including detailed speaker notes that read naturally.</p>
+        <h3>Generate</h3>
+        <p>The system reads the full instructions and rubric, figures out what format the prof wants, and writes the whole thing. If it says "2000-word essay in APA format about supply chain ethics," that's what you get. If it says "create a pivot table in the attached Excel file," you get numbered steps.</p>
 
-        <h3>From Workflow to Product</h3>
-        <p>This tool packages that exact workflow into a simple web interface. Upload your assignment, pick a theme, and download your presentation. One free generation to try it out, then unlimited access with a Pro subscription.</p>
+        <h3>Download</h3>
+        <p>DOCX for written assignments. PPTX for slide decks. Open it, review it, make it yours, submit it. The writing already passes as human because the humanizer runs on everything before it reaches you.</p>
       </div>
     </div>
   </section>
 
-  <section class="features" style="padding-bottom: 80px;">
+  <section class="features" style="padding-bottom: 100px;">
     <div class="container text-center">
-      <h2>Ready to try it?</h2>
-      <p class="subtitle" style="margin-bottom: 24px;">Your first presentation is free. No credit card required.</p>
-      <a href="app.html" class="btn btn-accent btn-lg">Generate Your First Presentation</a>
+      <h2 style="font-family: var(--serif); font-size: 2.4rem; font-weight: 400;">Try it free</h2>
+      <p style="color: var(--text-dim); margin-bottom: 28px; font-size: 0.95rem;">First generation is on us. No credit card.</p>
+      <a href="signup.html" class="btn btn-primary btn-lg">Create account</a>
     </div>
   </section>
 
   <footer class="footer">
     <div class="container">
-      <p>AI Presentation Generator &copy; 2026. Powered by Claude AI.</p>
+      <p>Academic Command Center &copy; 2026 &middot; Powered by Claude</p>
     </div>
   </footer>
 

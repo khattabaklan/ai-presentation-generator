@@ -12,6 +12,9 @@ router.post('/checkout', authMiddleware, async (req, res) => {
       [req.userId]
     );
     const user = userResult.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     if (user.subscription_status === 'active') {
       return res.status(400).json({ error: 'Already subscribed' });

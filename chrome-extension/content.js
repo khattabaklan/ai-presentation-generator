@@ -102,7 +102,13 @@
   function extractText() {
     const clone = document.body.cloneNode(true);
     clone.querySelectorAll('script,style,svg,iframe,img,noscript,link,meta,#aa-overlay').forEach(e=>e.remove());
+    // Append to a detached container so innerText works (requires layout)
+    const container = document.createElement('div');
+    container.style.cssText = 'position:absolute;left:-9999px;top:-9999px;visibility:hidden;';
+    container.appendChild(clone);
+    document.body.appendChild(container);
     let text = (clone.innerText || clone.textContent || '').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ').trim();
+    container.remove();
 
     // Append all d2l links with labels — critical for Claude to find URLs
     const links = [];

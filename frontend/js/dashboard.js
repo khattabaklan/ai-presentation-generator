@@ -24,10 +24,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="value">${completed}</div>
         <div class="label">Completed</div>
       </div>
-      <div class="card stat-card">
-        <div class="value">Free</div>
-        <div class="label">Plan</div>
-      </div>
     `;
 
     // History
@@ -35,49 +31,78 @@ document.addEventListener('DOMContentLoaded', async () => {
       emptyState.classList.remove('hidden');
     } else {
       historyBody.innerHTML = generations
-        .map(
-          (g) => `
-        <tr>
-          <td>#${g.id}</td>
-          <td>${g.slide_count} slides</td>
-          <td>${g.color_theme}</td>
-          <td><span class="status-badge status-${g.status}">${g.status}</span></td>
-          <td>${new Date(g.created_at).toLocaleDateString()}</td>
-          <td>
-            ${
-              g.status === 'completed'
-                ? `<a href="#" onclick="downloadFromDashboard(${g.id}, 'pptx')">PPTX</a> |
-                 <a href="#" onclick="downloadFromDashboard(${g.id}, 'docx')">DOCX</a>`
-                : '—'
-            }
-          </td>
-        </tr>
-      `
-        )
+        .map((g) => {
+          const id = escapeHtml(String(g.id));
+          const type = g.has_pptx ? 'Slides' : 'Document';
+          const status = escapeHtml(g.status);
+          const date = new Date(g.created_at).toLocaleDateString();
+          let downloads = '—';
+
+          if (g.status === 'completed') {
+            const parts = [];
+            if (g.has_pptx) parts.push(`<a href="#" class="dl-link" data-id="${id}" data-type="pptx">PPTX</a>`);
+            parts.push(`<a href="#" class="dl-link" data-id="${id}" data-type="docx">DOCX</a>`);
+            downloads = parts.join(' | ');
+          }
+
+          return `
+            <tr>
+              <td>#${id}</td>
+              <td>${type}</td>
+              <td><span class="status-badge status-${status}">${status}</span></td>
+              <td>${date}</td>
+              <td>${downloads}</td>
+            </tr>
+          `;
+        })
         .join('');
+
+      // Attach download handlers
+      historyBody.querySelectorAll('.dl-link').forEach((link) => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          downloadFromDashboard(link.dataset.id, link.dataset.type);
+        });
+      });
     }
   } catch (err) {
     console.error('Dashboard load error:', err);
+    if (statsRow) {
+      statsRow.innerHTML = '<div class="card stat-card"><div class="label">Failed to load data</div></div>';
+    }
   }
 });
 
 async function downloadFromDashboard(id, type) {
-  const token = api.getToken();
-  const url = api.getDownloadUrl(id, type);
+  try {
+    const token = api.getToken();
+    const url = api.getDownloadUrl(id, type);
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+    const res = await fetch(url, { headers });
 
-  if (!res.ok) {
-    alert('Download failed.');
-    return;
+    if (!res.ok) {
+      alert('Download failed.');
+      return;
+    }
+
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `assignment.${type}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    alert('Download failed: ' + (err.message || 'Unknown error'));
   }
+}
 
-  const blob = await res.blob();
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `presentation.${type}`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }

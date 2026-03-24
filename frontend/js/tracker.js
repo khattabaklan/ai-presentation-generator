@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const data = await api.trackerGetCredentials();
     if (data.hasCredentials) {
+      // Normalize: hasSavedLogin comes from the API response
+      data.hasSavedLogin = data.hasSavedLogin || false;
       showDashboard(data);
     } else {
       showSetup();
@@ -69,13 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     loadDashboardData();
 
-    // Sync button
+    // Sync button — always try server sync, backend will error if no credentials
     document.getElementById('sync-btn').addEventListener('click', () => {
-      if (credData && credData.hasSavedLogin) {
-        startServerSync();
-      } else {
-        alert('To sync, save your Brightspace credentials in Settings, or use the Chrome extension.');
-      }
+      startServerSync();
     });
 
     // Settings modal
@@ -83,9 +81,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('settings-btn').addEventListener('click', () => {
       const info = document.getElementById('current-lms-info');
       if (credData && credData.credentials && credData.credentials[0]) {
-        info.textContent = 'Connected to: ' + credData.credentials[0].lmsUrl;
+        info.innerHTML = 'Connected to: ' + escapeHtml(credData.credentials[0].lmsUrl);
         if (credData.credentials[0].lastSyncAt) {
-          info.textContent += '\nLast sync: ' + formatRelativeTime(new Date(credData.credentials[0].lastSyncAt));
+          info.innerHTML += '<br>Last sync: ' + escapeHtml(formatRelativeTime(new Date(credData.credentials[0].lastSyncAt)));
         }
       } else {
         info.textContent = 'Data synced via Chrome extension';
@@ -212,6 +210,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         } catch (err) {
           console.error('Poll error:', err);
+          clearInterval(poll);
+          statusText.textContent = 'Lost connection. Refresh to check status.';
+          syncBtn.disabled = false;
         }
       }, 2000);
     } catch (err) {
@@ -675,19 +676,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   function downloadFile(generationId, type) {
     const url = api.getDownloadUrl(generationId, type);
     const token = api.getToken();
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch(url, { headers })
       .then((res) => {
         if (!res.ok) throw new Error('Download failed');
         return res.blob();
       })
       .then((blob) => {
+        const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
+        a.href = blobUrl;
         a.download = `${currentAssignment ? currentAssignment.title : 'assignment'}.${type}`;
         document.body.appendChild(a);
         a.click();
         a.remove();
-        URL.revokeObjectURL(a.href);
+        URL.revokeObjectURL(blobUrl);
       })
       .catch((err) => {
         alert('Download failed: ' + err.message);

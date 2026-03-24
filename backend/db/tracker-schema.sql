@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS tracked_courses (
     term VARCHAR(200),
     course_url TEXT,
     last_crawled_at TIMESTAMP,
+    deep_crawled_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(user_id, platform_course_id)
@@ -48,9 +49,25 @@ CREATE TABLE IF NOT EXISTS tracked_assignments (
     rubric_text TEXT,
     assignment_type VARCHAR(100),
     assignment_url TEXT,
+    full_instructions TEXT,
+    requirements JSONB,
+    attachment_names JSONB,
+    deep_crawled_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(course_id, platform_assignment_id)
+);
+
+-- Course materials / module structure
+CREATE TABLE IF NOT EXISTS tracked_course_materials (
+    id SERIAL PRIMARY KEY,
+    course_id INTEGER NOT NULL REFERENCES tracked_courses(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    module_name VARCHAR(500),
+    topic_title VARCHAR(500),
+    topic_type VARCHAR(100),
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Sync history / job tracking

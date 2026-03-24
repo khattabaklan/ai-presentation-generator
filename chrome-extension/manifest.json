@@ -17,7 +17,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": ["*://*.brightspace.com/*", "*://*/d2l/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

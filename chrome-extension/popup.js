@@ -90,8 +90,10 @@ function showProgress(data) {
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
       chrome.runtime.sendMessage({ type: 'CANCEL_CRAWL' });
-      showReady({ id: null, url: '' });
       stopPolling();
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+        showReady(tab || { id: null, url: '' });
+      });
     });
   }
 }
@@ -103,8 +105,9 @@ function showDone(status) {
       <strong>Deep scan complete!</strong>
       <div class="detail">${status.coursesFound || 0} courses · ${status.assignmentsFound || 0} assignments found</div>
     </div>
-    <button id="sync-btn" onclick="location.reload()">Scan Again</button>
+    <button id="sync-btn">Scan Again</button>
   `;
+  document.getElementById('sync-btn').addEventListener('click', () => location.reload());
 }
 
 function showError(msg) {
@@ -113,8 +116,9 @@ function showError(msg) {
     <div class="status error">
       ${msg || 'Scan failed'}
     </div>
-    <button id="sync-btn" onclick="location.reload()">Try Again</button>
+    <button id="sync-btn">Try Again</button>
   `;
+  document.getElementById('sync-btn').addEventListener('click', () => location.reload());
 }
 
 function startPolling() {

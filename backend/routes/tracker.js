@@ -134,8 +134,9 @@ async function saveDeepCrawlResults(userId, results) {
     }
   }
 
-  // Insert course materials
+  // Insert course materials — clear old ones per course first to avoid duplicates
   if (materials && Array.isArray(materials)) {
+    const clearedCourses = new Set();
     for (const m of materials) {
       const courseResult = await pool.query(
         'SELECT id FROM tracked_courses WHERE user_id = $1 AND platform_course_id = $2',
@@ -143,6 +144,15 @@ async function saveDeepCrawlResults(userId, results) {
       );
       if (courseResult.rows.length === 0) continue;
       const dbCourseId = courseResult.rows[0].id;
+
+      // Clear old materials for this course once
+      if (!clearedCourses.has(dbCourseId)) {
+        await pool.query(
+          'DELETE FROM tracked_course_materials WHERE course_id = $1 AND user_id = $2',
+          [dbCourseId, userId]
+        );
+        clearedCourses.add(dbCourseId);
+      }
 
       if (m.topics && Array.isArray(m.topics)) {
         for (let i = 0; i < m.topics.length; i++) {
@@ -203,7 +213,7 @@ router.post('/import', authMiddleware, async (req, res) => {
     }
 
     // Upsert assignments
-    for (const assignment of assignments) {
+    for (const assignment of (assignments || [])) {
       // Look up internal course ID
       const courseResult = await pool.query(
         'SELECT id FROM tracked_courses WHERE user_id = $1 AND platform_course_id = $2',

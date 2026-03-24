@@ -187,9 +187,9 @@ async function login(page, lmsUrl, username, password) {
 
 // ─── Course Discovery ───────────────────────────────────────────────────────
 
-async function discoverCourses(page, lmsUrl, progress) {
+async function discoverCourses(page, lmsUrl, credentials, progress) {
   progress('Discovering courses...');
-  await navigateAndWait(page, `${lmsUrl}/d2l/home`, lmsUrl, null);
+  await navigateAndWait(page, `${lmsUrl}/d2l/home`, lmsUrl, credentials);
 
   // Scroll to trigger lazy loading
   await scrollToBottom(page);
@@ -440,7 +440,7 @@ async function syncBrightspace(lmsUrl, username, password, onProgress) {
     progress('Logged in successfully');
 
     // Step 2: Discover courses
-    const courses = await discoverCourses(page, lmsUrl, progress);
+    const courses = await discoverCourses(page, lmsUrl, credentials, progress);
     results.courses = courses;
 
     if (courses.length === 0) {
